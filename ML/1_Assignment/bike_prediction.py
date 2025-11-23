@@ -163,12 +163,9 @@ def preprocess_data(df):
     # Remove leakage & correlations
     df = df.drop(columns=["count", "casual", "registered", "atemp"])  
     # Drop datetime (no use)
-    df = df.drop(columns=["datetime", 'hour'])
+    df = df.drop(columns=["datetime"])
 
     print(' After : ', list(df.columns))
-    
-    # Copy dataframe
-    X = df.copy()
 
     # Categorical features kept SMALL (no hour, no day)
     categorical_features = [
@@ -201,17 +198,15 @@ def preprocess_data(df):
         remainder='passthrough'
     )
 
+    # Copy dataframe
+    X = df.copy()
     print(' Original features : ', len(df.columns))
+
     # Fit-transform X
     X_processed = preprocessor.fit_transform(X)
+
     print(' After transformation : ', X_processed.shape[1])
     print(' X_processed shape : ', X_processed.shape)
-
-    # Verify scaling
-    print(' Feature Scaling Verification:')
-    print(f'   Mean of scaled features (should be ~0): {np.mean(X_processed[:, :len(numeric_features)]):.6f}')
-    print(f'   Std of scaled features (should be ~1): {np.std(X_processed[:, :len(numeric_features)]):.6f}')
-    print(f'   Binary features range: [{np.min(X_processed[:, len(numeric_features):]):.1f}, {np.max(X_processed[:, len(numeric_features):]):.1f}]')
 
     return X_processed, y_log, preprocessor
 
