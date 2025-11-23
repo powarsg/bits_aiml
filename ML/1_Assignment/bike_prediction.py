@@ -163,7 +163,7 @@ def preprocess_data(df):
     # Remove leakage & correlations
     df = df.drop(columns=["count", "casual", "registered", "atemp"])  
     # Drop datetime (no use)
-    df = df.drop(columns=["datetime"])
+    df = df.drop(columns=["datetime", 'hour'])
 
     print(' After : ', list(df.columns))
     
