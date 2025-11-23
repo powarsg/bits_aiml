@@ -45,14 +45,29 @@ def train_random_forest(X_train, y_train, n_estimators=300, max_depth=None, rand
     return model
 
 
-def train_gradient_boosting(X_train, y_train, learning_rate=0.05, n_estimators=500, max_depth=4, random_state=42):
+def train_gradient_boosting(
+    X_train, 
+    y_train,
+    learning_rate=0.05, 
+    n_estimators=500, 
+    max_depth=4,
+    min_samples_leaf=1,
+    min_samples_split=2,
+    subsample=1.0,
+    random_state=42
+):
     print('8. train model : gradient_boosting')
+
     model = GradientBoostingRegressor(
         learning_rate=learning_rate,
         n_estimators=n_estimators,
         max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        min_samples_split=min_samples_split,
+        subsample=subsample,
         random_state=random_state
     )
+
     model.fit(X_train, y_train)
     return model
 
@@ -236,8 +251,18 @@ lin_model = train_linear_regression(X_train, y_train_log)
 ridge_model = train_ridge(X_train, y_train_log, alpha=1.0)
 lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
 
-rf_model = train_random_forest(X_train, y_train_log, n_estimators=513, max_depth=17)
-gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5)
+rf_model = train_random_forest(X_train, y_train_log, n_estimators=800, max_depth=17)
+#gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5)
+
+gb_tuned = train_gradient_boosting(
+    X_train, y_train_log,
+    learning_rate=0.030924079097806277,
+    n_estimators=862,
+    max_depth=5,
+    min_samples_leaf=3,
+    min_samples_split=7,
+    subsample=0.8147385973801488
+)
 
 print('9. Evaluate models ... ')
 results = {
@@ -245,90 +270,10 @@ results = {
     "Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
     "Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
     "Random Forest": evaluate_model(rf_model, X_test, y_test_log),
-    "Gradient Boosting": evaluate_model(gb_model, X_test, y_test_log),
+    "Gradient Boosting": evaluate_model(gb_tuned, X_test, y_test_log),
 }
 
 # Print results
 print(pd.DataFrame(results).T)
-
-from sklearn.model_selection import RandomizedSearchCV
-from scipy.stats import randint, uniform
-
-# ---------------------------------------------------------
-# 10. Hyperparameter Tuning for RF & GB
-# ---------------------------------------------------------
-print("\n10. Hyperparameter Tuning...")
-
-# --------------------------
-# 🔥 1. RANDOM FOREST TUNING
-# --------------------------
-rf_param_dist = {
-    "n_estimators": randint(200, 700),
-    "max_depth": randint(6, 18),
-    "min_samples_split": randint(2, 10),
-    "min_samples_leaf": randint(1, 4),
-    "max_features": ["sqrt", "log2"],
-    "bootstrap": [True]
-}
-
-rf_search = RandomizedSearchCV(
-    estimator=RandomForestRegressor(random_state=42),
-    param_distributions=rf_param_dist,
-    n_iter=20,
-    scoring="neg_mean_squared_error",
-    cv=3,
-    verbose=1,
-    n_jobs=2,          # ← LIMIT WORKERS
-    random_state=42
-)
-
-rf_search.fit(X_train, y_train_log)
-best_rf = rf_search.best_estimator_
-
-print("\nBest RandomForest Params:")
-print(rf_search.best_params_)
-
-
-# ----------------------------------
-# 🔥 2. GRADIENT BOOSTING TUNING
-# ----------------------------------
-gb_param_dist = {
-    "n_estimators": randint(300, 900),
-    "learning_rate": uniform(0.01, 0.15),
-    "max_depth": randint(2, 6),
-    "min_samples_split": randint(2, 10),
-    "min_samples_leaf": randint(1, 4),
-    "subsample": uniform(0.7, 0.3)
-}
-
-gb_search = RandomizedSearchCV(
-    estimator=GradientBoostingRegressor(random_state=42),
-    param_distributions=gb_param_dist,
-    n_iter=20,
-    scoring="neg_mean_squared_error",
-    cv=3,
-    verbose=1,
-    n_jobs=-2,
-    random_state=42
-)
-
-gb_search.fit(X_train, y_train_log)
-best_gb = gb_search.best_estimator_
-
-print("\nBest GradientBoosting Params:")
-print(gb_search.best_params_)
-
-
-# ---------------------------------------------------------
-# 11. Evaluate tuned models
-# ---------------------------------------------------------
-print("\n11. Evaluate Tuned Models...")
-
-tuned_results = {
-    "RandomForest (Tuned)": evaluate_model(best_rf, X_test, y_test_log),
-    "GradientBoosting (Tuned)": evaluate_model(best_gb, X_test, y_test_log),
-}
-
-print(pd.DataFrame(tuned_results).T)
 
 
