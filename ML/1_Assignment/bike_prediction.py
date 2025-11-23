@@ -236,8 +236,8 @@ lin_model = train_linear_regression(X_train, y_train_log)
 ridge_model = train_ridge(X_train, y_train_log, alpha=1.0)
 lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
 
-rf_model = train_random_forest(X_train, y_train_log, n_estimators=400, max_depth=18)
-gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.05, n_estimators=600, max_depth=2)
+rf_model = train_random_forest(X_train, y_train_log, n_estimators=800, max_depth=16)
+gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.05, n_estimators=800, max_depth=3)
 
 print('9. Evaluate models ... ')
 results = {
