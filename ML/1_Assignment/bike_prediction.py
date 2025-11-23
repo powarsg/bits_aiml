@@ -104,7 +104,9 @@ def add_derived_features(df):
     # Extract useful parts (but NOT using hour/day raw later)
     df["hour"] = df["datetime"].dt.hour
     df["weekday"] = df["datetime"].dt.weekday
+    df['day'] = df['datetime'].dt.day
     df['month'] = df['datetime'].dt.month
+    df['year'] = df['datetime'].dt.year
 
     # ----------------------------
     # Cyclical Hour Encoding
