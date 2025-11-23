@@ -120,6 +120,8 @@ def add_derived_features(df):
     peak_hours = [7, 8, 9, 16, 17, 18, 19]
     df['is_peak_hour'] = df['hour'].isin(peak_hours).astype(int)
 
+    df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
+
     # ----------------------------
     # Interaction: Working day × Peak hour = 0,1
     # ----------------------------
@@ -180,7 +182,7 @@ def preprocess_data(df):
     'hour_sin', 'hour_cos',
     'temp_humidity',
     'month', 'weekday',
-    'is_peak_hour', 'is_working_peak'
+    'is_peak_hour', 'is_working_peak', 'is_night'
     ]
 
     # ----------------------------
