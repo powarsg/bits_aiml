@@ -25,7 +25,7 @@ def add_derived_features(df):
     df['year'] = df['datetime'].dt.year
     
     df['weekday'] = df['datetime'].dt.weekday
-    #df['is_weekend'] = df['weekday'].isin([5, 6]).astype(int)
+    df['is_weekend'] = df['weekday'].isin([5, 6]).astype(int)
     df['is_peak_hour'] = df['hour'].isin([7, 8, 9, 16, 17, 18, 19]).astype(int)
     df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
     #df['temp_atemp_diff'] = df['temp'] - df['atemp']
@@ -62,7 +62,8 @@ def preprocess_data(df):
     numeric_transformer = StandardScaler()
 
     # Categorical (One-Hot)
-    categorical_features = ['season', 'weather', 'hour', 'month', 'weekday']
+    #categorical_features = ['season', 'weather', 'hour', 'month', 'weekday','year']
+    categorical_features = ['season', 'weather', 'hour', 'day','weekday', 'month', 'year']
     categorical_transformer = OneHotEncoder(handle_unknown='ignore')
 
     # Build full transformer
@@ -77,6 +78,8 @@ def preprocess_data(df):
     print("  Fitting & transforming X ...")
     X_transformed = preprocessor.fit_transform(X)
 
+    print(X_transformed[:5])
+    
     # convert sparse → dense
     #if hasattr(X_transformed, "toarray"):
     #    X_transformed = X_transformed.toarray()
