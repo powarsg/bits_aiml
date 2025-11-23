@@ -121,9 +121,9 @@ def add_derived_features(df):
     df['is_peak_hour'] = df['hour'].isin(peak_hours).astype(int)
 
     # ----------------------------
-    # Interaction: Working day × Peak hour
+    # Interaction: Working day × Peak hour = 0,1
     # ----------------------------
-    df['working_peak'] = df['workingday'] * df['is_peak_hour']
+    df['is_working_peak'] = df['workingday'] * df['is_peak_hour']
 
     # ----------------------------
     # Temperature buckets
@@ -180,7 +180,7 @@ def preprocess_data(df):
     'hour_sin', 'hour_cos',
     'temp_humidity',
     'month', 'weekday',
-    'is_peak_hour', 'working_peak'
+    'is_peak_hour', 'is_working_peak'
     ]
 
     # ----------------------------
