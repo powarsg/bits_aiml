@@ -24,7 +24,7 @@ def parse_datetime(x):
     return pd.to_datetime(x)   # fallback
 
 # ------------------------------------------------------------------
-# 1. Load training data
+# Load training data
 # ------------------------------------------------------------------
 # read training data set
 print('1. Reading training data...')
@@ -33,9 +33,9 @@ df = pd.read_csv("bike_train.csv")
 # LOG TRANSFORM TARGET
 Y = np.log1p(df['count'])
 
-# ======================================================
-# 2. FEATURE ENGINEERING
-# ======================================================
+# ------------------------------------------------------------------
+# Feature Engineering
+# ------------------------------------------------------------------
 def add_derived_features(df):
 
     # Parse datetime
@@ -105,7 +105,7 @@ print(' After - Feature Engineering # : ', len(df.columns))
 
 
 # ------------------------------------------------------------------
-# 3. Feature sets
+# Feature sets
 # ------------------------------------------------------------------
 categorical_features = ["season", "weather"]
 numeric_features = [
@@ -122,7 +122,7 @@ numeric_features = [
 X = df.copy()
 
 # ------------------------------------------------------------------
-# 4. Transform features
+# Transform features
 # ------------------------------------------------------------------
 numeric_transformer = StandardScaler()
 categorical_transformer = OneHotEncoder(handle_unknown='ignore')
@@ -168,7 +168,7 @@ X_train, X_test, y_train_log, y_test_log = train_test_split(
 )
 
 # ---------------------------------------------------------
-# 3. Model functions
+# Model functions
 # ---------------------------------------------------------
 def train_linear_regression(X_train, y_train):
     print('4. train model : linear_regression')
@@ -215,7 +215,7 @@ def train_gradient_boosting(X_train, y_train, learning_rate=0.05, n_estimators=5
     return model
 
 # ---------------------------------------------------------
-# 4. Evaluation model
+# Model Evaluation
 # ---------------------------------------------------------
 def evaluate_model(model, X_test, y_test_log):
     # Convert y_test back to original count scale
@@ -266,7 +266,7 @@ results = {
 print(pd.DataFrame(results).T)
 
 # ------------------------------------------------------------------
-# 6. Load test data and apply identical transformations
+# Load test data and apply identical transformations
 # ------------------------------------------------------------------
 print('10. Start TESTING ... ')
 test_df = pd.read_csv("bike_test.csv")
@@ -288,7 +288,7 @@ print(' Test Transformation - Features # : ', X_test_processed.shape[1])
 #print(' Test Transformation - Features : ', feature_names)
 
 # ------------------------------------------------------------------
-# 7. Predict using best Model 
+# Predict using Best Model 
 # ------------------------------------------------------------------
 test_pred_log = gb_tuned.predict(X_test_processed)
 test_pred = np.expm1(test_pred_log)  # reverse log1p
@@ -296,7 +296,7 @@ test_pred = np.expm1(test_pred_log)  # reverse log1p
 test_pred = np.maximum(test_pred, 0)
 
 # ------------------------------------------------------------------
-# 8. Create submission CSV
+# Create submission CSV
 # ------------------------------------------------------------------
 submission = pd.DataFrame({
     "datetime": datetime_backup,
