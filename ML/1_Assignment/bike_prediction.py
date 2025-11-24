@@ -8,105 +8,16 @@ from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_squared_log_error
 
-
-# ---------------------------------------------------------
-# 3. Model functions
-# ---------------------------------------------------------
-def train_linear_regression(X_train, y_train):
-    print('4. train model : linear_regression')
-    model = LinearRegression()
-    model.fit(X_train, y_train)
-    return model
-
-def train_ridge(X_train, y_train, alpha=1.0):
-    print('5. train model : ridge')
-    model = Ridge(alpha=alpha)
-    model.fit(X_train, y_train)
-    return model
-
-def train_lasso(X_train, y_train, alpha=0.001):
-    print('6. train model : lasso')
-    model = Lasso(alpha=alpha, max_iter=20000)
-    model.fit(X_train, y_train)
-    return model
-
-def train_random_forest(X_train, y_train, n_estimators=300, max_depth=None, random_state=42):
-    print('7. train model : random_forest')
-    model = RandomForestRegressor(
-        n_estimators=n_estimators,
-        max_depth=max_depth,
-        n_jobs=-1,
-        random_state=random_state
-    )
-    model.fit(X_train, y_train)
-    return model
-
-
-def train_gradient_boosting(X_train, y_train, learning_rate=0.05, n_estimators=500, max_depth=4, min_samples_leaf=1, min_samples_split=2, subsample=1.0, random_state=42):
-    print('8. train model : gradient_boosting')
-    model = GradientBoostingRegressor(
-        learning_rate=learning_rate,
-        n_estimators=n_estimators,
-        max_depth=max_depth,
-        min_samples_leaf=min_samples_leaf,
-        min_samples_split=min_samples_split,
-        subsample=subsample,
-        random_state=random_state
-    )
-    model.fit(X_train, y_train)
-    return model
-
-# ---------------------------------------------------------
-# 4. Evaluation model
-# ---------------------------------------------------------
-def evaluate_model(model, X_test, y_test_log):
-
-    # Convert y_test back to original count scale
-    y_test = np.expm1(y_test_log)
-
-    # Predict log(count)
-    y_pred_log = model.predict(X_test)
-
-    # Convert prediction back
-    y_pred = np.expm1(y_pred_log)
-
-    # Safety for RMSLE
-    y_pred = np.maximum(0, y_pred)
-    y_test = np.maximum(0, y_test)
-
-    #y_pred = model.predict(X_test)
-    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
-
-    results = {
-        "RMSLE-Custom": rmsle(y_test, y_pred),
-        "RMSLE-Sklearn": np.sqrt(mean_squared_log_error(y_test, y_pred)),
-        #"RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
-        #"MAE": mean_absolute_error(y_test, y_pred),
-        "R2": r2_score(y_test, y_pred)
-    }
-    return results
-
-def get_feature_names(preprocessor):
-    output_features = []
-    for name, transformer, cols in preprocessor.transformers_:
-        if name == "remainder":
-            continue
-        if hasattr(transformer, "get_feature_names_out"):
-            ft_names = transformer.get_feature_names_out(cols)
-        else:
-            ft_names = cols
-        output_features.extend(ft_names)
-    return output_features
-
-# ---------------------------------------------------------
-# Custom RMSLE Function
-# ---------------------------------------------------------
-def rmsle(y_true, y_pred):
-    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
-    return np.sqrt(np.mean((np.log1p(y_pred) - np.log1p(y_true))**2))
+# ------------------------------------------------------------------
+# 1. Load training data
+# ------------------------------------------------------------------
+# read training data set
+print('1. Reading training data...')
+df = pd.read_csv("bike_train.csv")
+#df.head(5)
 
 # ======================================================
-# 1. FEATURE ENGINEERING
+# 2. FEATURE ENGINEERING
 # ======================================================
 def add_derived_features(df):
 
@@ -160,8 +71,186 @@ def add_derived_features(df):
     return df
 
 
+print('2. Preprocess data...')
+print(f' Original Shape : {df.shape}' )
+print(f' Original Features : {len(df.columns)-1}' )
+print(' Before : ', list(df.columns))
+
+df = add_derived_features(df)
+print(' After  : ', list(df.columns))
+print(' After - Adding New Features : ', len(df.columns))
+
+# ------------------------------------------------------------------
+# 3. Feature sets
+# ------------------------------------------------------------------
+categorical_features = ["season", "weather"]
+numeric_features = [
+    "temp", "humidity", "windspeed",
+    "hour_sin", "hour_cos",
+    "temp_humidity",
+    "month", "weekday", "day", 'holiday', 'workingday', 'year',
+    #"is_peak_hour", 
+    "is_working_peak"
+]
+
+all_features = categorical_features + numeric_features
+X = df[all_features]
+# LOG TRANSFORM TARGET
+Y = np.log1p(df['count'])
+
+def get_feature_names(preprocessor):
+    output_features = []
+    for name, transformer, cols in preprocessor.transformers_:
+        if name == "remainder":
+            continue
+        if hasattr(transformer, "get_feature_names_out"):
+            ft_names = transformer.get_feature_names_out(cols)
+        else:
+            ft_names = cols
+        output_features.extend(ft_names)
+    return output_features
+
+# ------------------------------------------------------------------
+# 4. Preprocessor
+# ------------------------------------------------------------------
+numeric_transformer = StandardScaler()
+categorical_transformer = OneHotEncoder(handle_unknown='ignore')
+# ColumnTransformer
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('num', numeric_transformer, numeric_features),
+        ('cat', categorical_transformer, categorical_features)
+    ],
+    remainder='passthrough',
+    force_int_remainder_cols=False
+)
+# Fit transform
+X_processed = preprocessor.fit_transform(X)
+# Preprocess data
+#X_processed, y_log, encoder = preprocess_data(df)
+feature_names = get_feature_names(preprocessor)
+print(' After Transformation - Shape : ', X_processed.shape)
+print(' After Transformation - Features # : ', X_processed.shape[1])
+print(' After Transformation - Features : ', feature_names)
+
+
+
+# Train/test split : 80-20 
+print('3. Split train-test data...')
+X_train, X_test, y_train_log, y_test_log = train_test_split(
+    X_processed, Y, test_size=0.2, random_state=42
+)
+
+# ---------------------------------------------------------
+# 3. Model functions
+# ---------------------------------------------------------
+def train_linear_regression(X_train, y_train):
+    print('4. train model : linear_regression')
+    model = LinearRegression()
+    model.fit(X_train, y_train)
+    return model
+
+def train_ridge(X_train, y_train, alpha=1.0):
+    print('5. train model : ridge')
+    model = Ridge(alpha=alpha)
+    model.fit(X_train, y_train)
+    return model
+
+def train_lasso(X_train, y_train, alpha=0.001):
+    print('6. train model : lasso')
+    model = Lasso(alpha=alpha, max_iter=20000)
+    model.fit(X_train, y_train)
+    return model
+
+def train_random_forest(X_train, y_train, n_estimators=300, max_depth=None, random_state=42):
+    print('7. train model : random_forest')
+    model = RandomForestRegressor(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        n_jobs=-1,
+        random_state=random_state
+    )
+    model.fit(X_train, y_train)
+    return model
+
+
+def train_gradient_boosting(X_train, y_train, learning_rate=0.05, n_estimators=500, max_depth=4, min_samples_leaf=1, min_samples_split=2, subsample=1.0, random_state=42):
+    print('8. train model : gradient_boosting')
+    model = GradientBoostingRegressor(
+        learning_rate=learning_rate,
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        min_samples_leaf=min_samples_leaf,
+        min_samples_split=min_samples_split,
+        subsample=subsample,
+        random_state=random_state
+    )
+    model.fit(X_train, y_train)
+    return model
+
+# ---------------------------------------------------------
+# 4. Evaluation model
+# ---------------------------------------------------------
+def evaluate_model(model, X_test, y_test_log):
+    # Convert y_test back to original count scale
+    y_test = np.expm1(y_test_log)
+
+    # Predict log(count)
+    y_pred_log = model.predict(X_test)
+    # Convert prediction back
+    y_pred = np.expm1(y_pred_log)
+
+    # Safety for RMSLE
+    y_pred = np.maximum(0, y_pred)
+    y_test = np.maximum(0, y_test)
+
+    #y_pred = model.predict(X_test)
+    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
+
+    results = {
+        "RMSLE-Custom": rmsle(y_test, y_pred),
+        "RMSLE-Sklearn": np.sqrt(mean_squared_log_error(y_test, y_pred)),
+        #"RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
+        #"MAE": mean_absolute_error(y_test, y_pred),
+        "R2": r2_score(y_test, y_pred)
+    }
+    return results
+# ---------------------------------------------------------
+# Custom RMSLE Function
+# ---------------------------------------------------------
+def rmsle(y_true, y_pred):
+    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
+    return np.sqrt(np.mean((np.log1p(y_pred) - np.log1p(y_true))**2))
+
+
+# Train the models
+lin_model = train_linear_regression(X_train, y_train_log)
+ridge_model = train_ridge(X_train, y_train_log, alpha=1.0)
+lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
+rf_model = train_random_forest(X_train, y_train_log, n_estimators=800, max_depth=17)
+#gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5)
+
+# hyper parameter - tunned
+gb_tuned = train_gradient_boosting( X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5, min_samples_leaf=3, min_samples_split=7, subsample=0.8147)
+
+print('9. Evaluate models ... ')
+results = {
+    "Linear Regression": evaluate_model(lin_model, X_test, y_test_log),
+    "Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
+    "Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
+    "Random Forest": evaluate_model(rf_model, X_test, y_test_log),
+    "Gradient Boosting": evaluate_model(gb_tuned, X_test, y_test_log),
+}
+
+# Print results
+print(pd.DataFrame(results).T)
+
+
+
+
+
 # ======================================================
-# 2. PREPROCESSING PIPELINE
+# 2. PREPROCESSING
 # ======================================================
 def preprocess_data(df):
     print('2. Preprocess data...')
@@ -237,52 +326,7 @@ def preprocess_data(df):
 
     return X_processed, y_log, preprocessor
 
-# ---------------------------------------------------------
-# 5. Main execution on training dataset
-# ---------------------------------------------------------
-# read training data set
-print('1. Reading training data...')
-df = pd.read_csv("bike_train.csv")
-#df.head(5)
 
-# Preprocess data
-X_processed, y_log, encoder = preprocess_data(df)
-
-# Train/test split : 80-20 
-print('3. Split train-test data...')
-X_train, X_test, y_train_log, y_test_log = train_test_split(
-    X_processed, y_log, test_size=0.2, random_state=42
-)
-
-# Train the models
-lin_model = train_linear_regression(X_train, y_train_log)
-ridge_model = train_ridge(X_train, y_train_log, alpha=1.0)
-lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
-
-rf_model = train_random_forest(X_train, y_train_log, n_estimators=800, max_depth=17)
-#gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5)
-
-# hyper parameter - tunned
-gb_tuned = train_gradient_boosting(
-    X_train, y_train_log,
-    learning_rate=0.0309,
-    n_estimators=862,
-    max_depth=5,
-    min_samples_leaf=3,
-    min_samples_split=7,
-    subsample=0.8147)
-
-print('9. Evaluate models ... ')
-results = {
-    "Linear Regression": evaluate_model(lin_model, X_test, y_test_log),
-    "Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
-    "Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
-    "Random Forest": evaluate_model(rf_model, X_test, y_test_log),
-    "Gradient Boosting": evaluate_model(gb_tuned, X_test, y_test_log),
-}
-
-# Print results
-print(pd.DataFrame(results).T)
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -311,5 +355,5 @@ def plot_feature_importance(name, model, preprocessor):
     plt.show()
 
 # Call it
-plot_feature_importance( "Gradient Boosting" , gb_tuned, encoder)
+plot_feature_importance( "Gradient Boosting" , gb_tuned, preprocessor)
 
