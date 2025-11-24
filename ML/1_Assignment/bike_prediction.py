@@ -319,82 +319,6 @@ submission.to_csv("submission_compare.csv", index=False)
 print("submission.csv generated successfully!")
 
 
-
-# ======================================================
-# 2. PREPROCESSING
-# ======================================================
-def preprocess_data(df):
-    print('2. Preprocess data...')
-    print(f' Original Shape : {df.shape}' )
-    print(f' Original Features : {len(df.columns)-1}' )
-    print(' Before : ', list(df.columns))
-    
-    df = add_derived_features(df)
-   
-    # Extract target
-    #y = df["count"]
-    # LOG TRANSFORM TARGET
-    y_log = np.log1p(df['count'])
-
-    # Remove leakage & correlations
-    df = df.drop(columns=["count", "casual", "registered", "atemp"])  
-    # Drop datetime (no use)
-    df = df.drop(columns=["datetime", "hour"])
-
-    print(' After - Feature Engineering : ', list(df.columns))
-    print(' After - Feature Engineering  # : ', len(df.columns))
-
-    # Categorical features
-    categorical_features = [
-        'season', 'weather'
-        #,'temp_bucket', 'weather_season'
-    ]
-
-    numeric_features = [
-    'temp', 'humidity', 'windspeed',
-    'hour_sin', 'hour_cos',
-    'temp_humidity',
-    'month', 'weekday', 'day',
-     #'hour', 'is_peak_hour', 'is_night',
-    'is_working_peak'
-    ]
-
-    # ----------------------------
-    # Transformers
-    # ----------------------------
-    numeric_transformer = StandardScaler()
-    categorical_transformer = OneHotEncoder(handle_unknown='ignore')
-
-    # ----------------------------
-    # ColumnTransformer
-    # ----------------------------
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numeric_transformer, numeric_features),
-            ('cat', categorical_transformer, categorical_features)
-        ],
-        remainder='passthrough',
-        force_int_remainder_cols=False
-    )
-
-    # Copy dataframe
-    X = df.copy()
-
-    # Fit-transform X
-    X_processed = preprocessor.fit_transform(X)
-
-    feature_names = get_feature_names(preprocessor)
-    print(' After Transformation - Shape : ', X_processed.shape)
-    print(' After Transformation - Features # : ', X_processed.shape[1])
-    print(' After Transformation - Features : ', feature_names)
-    
-    #X_processed_df = pd.DataFrame(X_processed, columns=feature_names)
-    #print(X_processed[:5])
-
-    return X_processed, y_log, preprocessor
-
-
-
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -422,5 +346,5 @@ def plot_feature_importance(name, model, preprocessor):
     plt.show()
 
 # Call it
-plot_feature_importance( "Gradient Boosting" , gb_tuned, preprocessor)
+#plot_feature_importance( "Gradient Boosting" , gb_tuned, preprocessor)
 
