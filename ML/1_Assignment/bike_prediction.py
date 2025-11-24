@@ -15,6 +15,8 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, m
 print('1. Reading training data...')
 df = pd.read_csv("bike_train.csv")
 #df.head(5)
+# LOG TRANSFORM TARGET
+Y = np.log1p(df['count'])
 
 # ======================================================
 # 2. FEATURE ENGINEERING
@@ -62,7 +64,6 @@ def add_derived_features(df):
     #    bins=[-1, 10, 22, 30, 50],
     #    labels=["cold", "mild", "warm", "hot"]
     #)
-
     # ----------------------------
     # Weather × Season interaction
     # ----------------------------
@@ -77,8 +78,15 @@ print(f' Original Features : {len(df.columns)-1}' )
 print(' Before : ', list(df.columns))
 
 df = add_derived_features(df)
-print(' After  : ', list(df.columns))
-print(' After - Adding New Features : ', len(df.columns))
+
+# Remove leakage & correlations
+df = df.drop(columns=["count", "casual", "registered", "atemp"])  
+# Drop datetime (no use)
+df = df.drop(columns=["datetime", "hour"])
+
+print(' After - Feature Engineering : ', list(df.columns))
+print(' After - Feature Engineering # : ', len(df.columns))
+
 
 # ------------------------------------------------------------------
 # 3. Feature sets
@@ -93,33 +101,12 @@ numeric_features = [
     #"is_peak_hour", 
     "is_working_peak"
 ]
-all_features = categorical_features + numeric_features
+#all_features = categorical_features + numeric_features
 #X = df[all_features]
-
-# LOG TRANSFORM TARGET
-Y = np.log1p(df['count'])
-
-# Remove leakage & correlations
-df = df.drop(columns=["count", "casual", "registered", "atemp"])  
-# Drop datetime (no use)
-df = df.drop(columns=["datetime", "hour"])
 X = df.copy()
 
-
-def get_feature_names(preprocessor):
-    output_features = []
-    for name, transformer, cols in preprocessor.transformers_:
-        if name == "remainder":
-            continue
-        if hasattr(transformer, "get_feature_names_out"):
-            ft_names = transformer.get_feature_names_out(cols)
-        else:
-            ft_names = cols
-        output_features.extend(ft_names)
-    return output_features
-
 # ------------------------------------------------------------------
-# 4. Preprocessor
+# 4. Transform features
 # ------------------------------------------------------------------
 numeric_transformer = StandardScaler()
 categorical_transformer = OneHotEncoder(handle_unknown='ignore')
@@ -132,6 +119,22 @@ preprocessor = ColumnTransformer(
     remainder='passthrough',
     force_int_remainder_cols=False
 )
+def get_feature_names(preprocessor):
+    output_features = []
+    for name, transformer, cols in preprocessor.transformers_:
+        #print(f'name = {name}')
+        #if name == "remainder":
+        #   continue
+        if hasattr(transformer, "get_feature_names_out"):
+            ft_names = transformer.get_feature_names_out(cols)
+        else:
+            ft_names = cols
+        
+        #print(f'ft_names = {ft_names}')
+        output_features.extend(ft_names)
+    return output_features
+
+
 # Fit transform
 X_processed = preprocessor.fit_transform(X)
 # Preprocess data
@@ -142,8 +145,7 @@ print(' After Transformation - Features # : ', X_processed.shape[1])
 print(' After Transformation - Features : ', feature_names)
 
 
-
-# Train/test split : 80-20 
+# Train-Test data split : 80-20 
 print('3. Split train-test data...')
 X_train, X_test, y_train_log, y_test_log = train_test_split(
     X_processed, Y, test_size=0.2, random_state=42
@@ -278,8 +280,8 @@ def preprocess_data(df):
     # Drop datetime (no use)
     df = df.drop(columns=["datetime", "hour"])
 
-    print(' After  : ', list(df.columns))
-    print(' After - Adding New Features : ', len(df.columns))
+    print(' After - Feature Engineering : ', list(df.columns))
+    print(' After - Feature Engineering  # : ', len(df.columns))
 
     # Categorical features
     categorical_features = [
@@ -292,10 +294,8 @@ def preprocess_data(df):
     'hour_sin', 'hour_cos',
     'temp_humidity',
     'month', 'weekday', 'day',
-     #'hour', 
-    #'is_peak_hour',
+     #'hour', 'is_peak_hour', 'is_night',
     'is_working_peak'
-    #'is_night'
     ]
 
     # ----------------------------
@@ -319,12 +319,10 @@ def preprocess_data(df):
     # Copy dataframe
     X = df.copy()
 
-
     # Fit-transform X
     X_processed = preprocessor.fit_transform(X)
 
     feature_names = get_feature_names(preprocessor)
-
     print(' After Transformation - Shape : ', X_processed.shape)
     print(' After Transformation - Features # : ', X_processed.shape[1])
     print(' After Transformation - Features : ', feature_names)
