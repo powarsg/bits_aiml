@@ -132,7 +132,7 @@ def add_derived_features(df):
     # Parse datetime
     df["datetime"] = pd.to_datetime(df["datetime"])
 
-    # Extract useful parts (but NOT using hour/day raw later)
+    # Extract useful parts (but NOT using hour/year raw later)
     df["hour"] = df["datetime"].dt.hour
     df["weekday"] = df["datetime"].dt.weekday
     df['day'] = df['datetime'].dt.day
@@ -152,17 +152,16 @@ def add_derived_features(df):
     df['is_peak_hour'] = df['hour'].isin(peak_hours).astype(int)
 
     # ----------------------------
+    # Interaction: Working day × Peak hour = 0,1
+    # ----------------------------
+    df['is_working_peak'] = df['workingday'] * df['is_peak_hour']
+
+    # ----------------------------
     # Non-linear interaction
     # ----------------------------
     df['temp_humidity'] = df['temp'] * df['humidity']
     
     #df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
-
-    # ----------------------------
-    # Interaction: Working day × Peak hour = 0,1
-    # ----------------------------
-    df['is_working_peak'] = df['workingday'] * df['is_peak_hour']
-
     # ----------------------------
     # Temperature buckets
     # ----------------------------
@@ -176,8 +175,6 @@ def add_derived_features(df):
     # Weather × Season interaction
     # ----------------------------
     #df['weather_season'] = df['weather'].astype(str) + "_" + df['season'].astype(str)
-
-
 
     return df
 
@@ -201,8 +198,7 @@ def preprocess_data(df):
     # Remove leakage & correlations
     df = df.drop(columns=["count", "casual", "registered", "atemp"])  
     # Drop datetime (no use)
-    df = df.drop(columns=["datetime"])
-    df = df.drop(columns=["hour"])
+    df = df.drop(columns=["datetime", "hour"])
 
     print(' After  : ', list(df.columns))
     print(' After - Adding New Features : ', len(df.columns))
@@ -333,4 +329,5 @@ def plot_feature_importance(name, model, preprocessor):
     plt.show()
 
 # Call it
-plot_feature_importance( "Gradient Boosting" , gb_tuned, encoder)
+#plot_feature_importance( "Gradient Boosting" , gb_tuned, encoder)
+
