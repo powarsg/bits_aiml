@@ -234,8 +234,8 @@ def evaluate_model(model, X_test, y_test_log):
     #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
 
     results = {
-        "RMSLE-Custom": rmsle(y_test, y_pred),
-        "RMSLE-Sklearn": np.sqrt(mean_squared_log_error(y_test, y_pred)),
+        "RMSLE": rmsle(y_test, y_pred),
+        #"RMSLE-Sklearn": np.sqrt(mean_squared_log_error(y_test, y_pred)),
         #"RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
         #"MAE": mean_absolute_error(y_test, y_pred),
         "R2": r2_score(y_test, y_pred)
@@ -256,8 +256,8 @@ gb_tuned = train_gradient_boosting( X_train, y_train_log, learning_rate=0.0309, 
 print('9. Evaluate models ... ')
 results = {
     "Linear Regression": evaluate_model(lin_model, X_test, y_test_log),
-    #"Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
-    #"Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
+    "Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
+    "Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
     "Random Forest": evaluate_model(rf_model, X_test, y_test_log),
     "Gradient Boosting": evaluate_model(gb_tuned, X_test, y_test_log),
 }
@@ -321,14 +321,7 @@ print("submission.csv generated successfully!")
 import numpy as np
 import matplotlib.pyplot as plt
 
-def plot_feature_importance(name, model, preprocessor):
-    # --- Get feature names from ColumnTransformer ---
-    num_features = preprocessor.transformers_[0][2]
-    cat_features = list(preprocessor.transformers_[1][1].get_feature_names_out(preprocessor.transformers_[1][2]))
-    remainder = preprocessor.transformers_[2][2] if len(preprocessor.transformers_) > 2 else []
-
-    feature_names = num_features + cat_features + remainder
-
+def plot_feature_importance(name, model, feature_names):
     # --- Get importances ---
     importances = model.feature_importances_
     
@@ -338,12 +331,43 @@ def plot_feature_importance(name, model, preprocessor):
     # --- Plot ---
     plt.figure(figsize=(10, 14))
     plt.barh(np.array(feature_names)[sorted_idx], importances[sorted_idx])
-    plt.title(name + " Feature Importance", fontsize=16)
+    plt.title(name + " - Feature Importance", fontsize=16)
     plt.xlabel("Importance", fontsize=12)
     plt.ylabel("Feature", fontsize=12)
     plt.tight_layout()
     plt.show()
 
+# ---------------------------------------------------------
+# Plot Residual for model
+# ---------------------------------------------------------
+def plot_model_residual(name, model, X_test, y_test_log):
+    # Convert y_test back to original count scale
+    y_test = np.expm1(y_test_log)
+
+    # 1. Predict log(count)
+    y_pred_log = model.predict(X_test)
+    # Convert prediction back
+    y_pred = np.expm1(y_pred_log)
+
+    # Safety for RMSLE
+    y_pred = np.maximum(0, y_pred)
+    y_test = np.maximum(0, y_test)
+
+    # 2. Compute residuals
+    residuals = y_test - y_pred
+    
+    # 3. Plot residuals
+    plt.figure(figsize=(8,5))
+    plt.scatter(y_pred, residuals, alpha=0.5)
+    plt.axhline(0, color='red', linestyle='--')
+    plt.xlabel("Predicted Values")
+    plt.ylabel("Residuals (Actual - Predicted)")
+    plt.title("Residual Plot - "+name)
+    plt.show()
+
 # Call it
 #plot_feature_importance( "Gradient Boosting" , gb_tuned, preprocessor)
+
+# plot residuals
+#plot_model_residual('Gradient Boosting Regressor', gb_tuned, X_test, y_test_log)
 
