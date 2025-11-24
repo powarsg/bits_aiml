@@ -101,6 +101,22 @@ def evaluate_model(model, X_test, y_test_log):
     }
     return results
 
+def get_feature_names(preprocessor):
+    output_features = []
+
+    for name, transformer, cols in preprocessor.transformers_:
+        if name == "remainder":
+            continue
+
+        if hasattr(transformer, "get_feature_names_out"):
+            ft_names = transformer.get_feature_names_out(cols)
+        else:
+            ft_names = cols
+
+        output_features.extend(ft_names)
+
+    return output_features
+
 # ---------------------------------------------------------
 # Custom RMSLE Function
 # ---------------------------------------------------------
@@ -135,7 +151,12 @@ def add_derived_features(df):
     peak_hours = [7, 8, 9, 16, 17, 18, 19]
     df['is_peak_hour'] = df['hour'].isin(peak_hours).astype(int)
 
-    df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
+    # ----------------------------
+    # Non-linear interaction
+    # ----------------------------
+    df['temp_humidity'] = df['temp'] * df['humidity']
+    
+    #df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
 
     # ----------------------------
     # Interaction: Working day × Peak hour = 0,1
@@ -145,21 +166,18 @@ def add_derived_features(df):
     # ----------------------------
     # Temperature buckets
     # ----------------------------
-    df['temp_bucket'] = pd.cut(
-        df['temp'],
-        bins=[-1, 10, 22, 30, 50],
-        labels=["cold", "mild", "warm", "hot"]
-    )
+    #df['temp_bucket'] = pd.cut(
+    #    df['temp'],
+    #    bins=[-1, 10, 22, 30, 50],
+    #    labels=["cold", "mild", "warm", "hot"]
+    #)
 
     # ----------------------------
     # Weather × Season interaction
     # ----------------------------
-    df['weather_season'] = df['weather'].astype(str) + "_" + df['season'].astype(str)
+    #df['weather_season'] = df['weather'].astype(str) + "_" + df['season'].astype(str)
 
-    # ----------------------------
-    # Non-linear interaction
-    # ----------------------------
-    df['temp_humidity'] = df['temp'] * df['humidity']
+
 
     return df
 
@@ -169,13 +187,14 @@ def add_derived_features(df):
 # ======================================================
 def preprocess_data(df):
     print('2. Preprocess data...')
-
+    print(f' Original Shape : {df.shape}' )
+    print(f' Original Features : {len(df.columns)-1}' )
     print(' Before : ', list(df.columns))
+    
     df = add_derived_features(df)
    
     # Extract target
     #y = df["count"]
-
     # LOG TRANSFORM TARGET
     y_log = np.log1p(df['count'])
 
@@ -183,21 +202,25 @@ def preprocess_data(df):
     df = df.drop(columns=["count", "casual", "registered", "atemp"])  
     # Drop datetime (no use)
     df = df.drop(columns=["datetime"])
+    df = df.drop(columns=["hour"])
 
-    print(' After : ', list(df.columns))
+    print(' After  : ', list(df.columns))
+    print(' After - Adding New Features : ', len(df.columns))
 
-    # Categorical features kept SMALL (no hour, no day)
+    # Categorical features
     categorical_features = [
-        'season', 'weather',
-        'temp_bucket', 'weather_season'
+        'season', 'weather'
+        #,'temp_bucket', 'weather_season'
     ]
 
     numeric_features = [
     'temp', 'humidity', 'windspeed',
     'hour_sin', 'hour_cos',
     'temp_humidity',
-    'month', 'weekday',
-    'is_peak_hour', 'is_working_peak', 'is_night'
+    'month', 'weekday', 'day',
+     #'hour', 
+    'is_peak_hour', 'is_working_peak'
+    #'is_night'
     ]
 
     # ----------------------------
@@ -214,18 +237,25 @@ def preprocess_data(df):
             ('num', numeric_transformer, numeric_features),
             ('cat', categorical_transformer, categorical_features)
         ],
-        remainder='passthrough'
+        remainder='passthrough',
+        force_int_remainder_cols=False
     )
 
     # Copy dataframe
     X = df.copy()
-    print(' Original features : ', len(df.columns))
+
 
     # Fit-transform X
     X_processed = preprocessor.fit_transform(X)
 
-    print(' After transformation : ', X_processed.shape[1])
-    print(' X_processed shape : ', X_processed.shape)
+    feature_names = get_feature_names(preprocessor)
+
+    print(' After Transformation - Shape : ', X_processed.shape)
+    print(' After Transformation - Features # : ', X_processed.shape[1])
+    print(' After Transformation - Features : ', feature_names)
+    
+    #X_processed_df = pd.DataFrame(X_processed, columns=feature_names)
+    #print(X_processed[:5])
 
     return X_processed, y_log, preprocessor
 
@@ -276,4 +306,31 @@ results = {
 # Print results
 print(pd.DataFrame(results).T)
 
+import numpy as np
+import matplotlib.pyplot as plt
 
+def plot_feature_importance(name, model, preprocessor):
+    # --- Get feature names from ColumnTransformer ---
+    num_features = preprocessor.transformers_[0][2]
+    cat_features = list(preprocessor.transformers_[1][1].get_feature_names_out(preprocessor.transformers_[1][2]))
+    remainder = preprocessor.transformers_[2][2] if len(preprocessor.transformers_) > 2 else []
+
+    feature_names = num_features + cat_features + remainder
+
+    # --- Get importances ---
+    importances = model.feature_importances_
+    
+    # --- Sort by importance ---
+    sorted_idx = np.argsort(importances)
+
+    # --- Plot ---
+    plt.figure(figsize=(10, 14))
+    plt.barh(np.array(feature_names)[sorted_idx], importances[sorted_idx])
+    plt.title(name + " Feature Importance", fontsize=16)
+    plt.xlabel("Importance", fontsize=12)
+    plt.ylabel("Feature", fontsize=12)
+    plt.tight_layout()
+    plt.show()
+
+# Call it
+plot_feature_importance( "Gradient Boosting" , gb_tuned, encoder)
