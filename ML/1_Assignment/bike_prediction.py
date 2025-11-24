@@ -8,6 +8,21 @@ from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, mean_squared_log_error
 
+# ---------------------------------------------------------
+# Custom RMSLE Function
+# ---------------------------------------------------------
+def rmsle(y_true, y_pred):
+    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
+    return np.sqrt(np.mean((np.log1p(y_pred) - np.log1p(y_true))**2))
+
+def parse_datetime(x):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%m-%d-%Y %H:%M", "%d-%m-%Y %H:%M"):
+        try:
+            return pd.to_datetime(x, format=fmt)
+        except:
+            pass
+    return pd.to_datetime(x)   # fallback
+
 # ------------------------------------------------------------------
 # 1. Load training data
 # ------------------------------------------------------------------
@@ -24,7 +39,8 @@ Y = np.log1p(df['count'])
 def add_derived_features(df):
 
     # Parse datetime
-    df["datetime"] = pd.to_datetime(df["datetime"])
+    #df["datetime"] = pd.to_datetime(df["datetime"])
+    df["datetime"] = df["datetime"].apply(parse_datetime)
 
     # Extract useful parts (but NOT using hour/year raw later)
     df["hour"] = df["datetime"].dt.hour
@@ -80,9 +96,9 @@ print(' Before : ', list(df.columns))
 df = add_derived_features(df)
 
 # Remove leakage & correlations
-df = df.drop(columns=["count", "casual", "registered", "atemp"])  
+df = df.drop(columns=["count", "casual", "registered"])  
 # Drop datetime (no use)
-df = df.drop(columns=["datetime", "hour"])
+df = df.drop(columns=["datetime", "hour", "atemp"])
 
 print(' After - Feature Engineering : ', list(df.columns))
 print(' After - Feature Engineering # : ', len(df.columns))
@@ -225,12 +241,6 @@ def evaluate_model(model, X_test, y_test_log):
         "R2": r2_score(y_test, y_pred)
     }
     return results
-# ---------------------------------------------------------
-# Custom RMSLE Function
-# ---------------------------------------------------------
-def rmsle(y_true, y_pred):
-    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
-    return np.sqrt(np.mean((np.log1p(y_pred) - np.log1p(y_true))**2))
 
 
 # Train the models
@@ -246,8 +256,8 @@ gb_tuned = train_gradient_boosting( X_train, y_train_log, learning_rate=0.0309, 
 print('9. Evaluate models ... ')
 results = {
     "Linear Regression": evaluate_model(lin_model, X_test, y_test_log),
-    "Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
-    "Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
+    #"Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
+    #"Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
     "Random Forest": evaluate_model(rf_model, X_test, y_test_log),
     "Gradient Boosting": evaluate_model(gb_tuned, X_test, y_test_log),
 }
@@ -255,7 +265,58 @@ results = {
 # Print results
 print(pd.DataFrame(results).T)
 
+# ------------------------------------------------------------------
+# 6. Load test data and apply identical transformations
+# ------------------------------------------------------------------
+print('10. Start TESTING ... ')
+test_df = pd.read_csv("bike_test.csv")
 
+# save datetime
+datetime_backup = test_df["datetime"]
+
+test_df = add_derived_features(test_df)
+
+# Remove leakage & correlations
+test_df = test_df.drop(columns=["datetime", "hour", "atemp"])
+
+#print(' Test - Feature Engineering : ', list(test_df.columns))
+print(' Test - Feature Engineering # : ', len(test_df.columns))
+X_test = test_df.copy()
+X_test_processed = preprocessor.transform(X_test)
+print(' Test Transformation - Shape : ', X_test_processed.shape)
+print(' Test Transformation - Features # : ', X_test_processed.shape[1])
+#print(' Test Transformation - Features : ', feature_names)
+
+# ------------------------------------------------------------------
+# 7. Predict using best Model 
+# ------------------------------------------------------------------
+test_pred_log = gb_tuned.predict(X_test_processed)
+test_pred = np.expm1(test_pred_log)  # reverse log1p
+# No negative predictions
+test_pred = np.maximum(test_pred, 0)
+
+# ------------------------------------------------------------------
+# 8. Create submission CSV
+# ------------------------------------------------------------------
+submission = pd.DataFrame({
+    "datetime": datetime_backup,
+    "count": test_pred.round().astype(int)
+})
+submission.to_csv("submission.csv", index=False)
+
+
+test_pred_log_rf = rf_model.predict(X_test_processed)
+test_pred_rf = np.expm1(test_pred_log_rf)  # reverse log1p
+# No negative predictions
+test_pred_rf = np.maximum(test_pred_rf, 0)
+submission = pd.DataFrame({
+    "datetime": datetime_backup,
+    "count_GB": test_pred.round().astype(int),
+    "count_RF": test_pred_rf.round().astype(int)
+})
+submission.to_csv("submission_compare.csv", index=False)
+
+print("submission.csv generated successfully!")
 
 
 
