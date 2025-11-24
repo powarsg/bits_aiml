@@ -88,15 +88,23 @@ numeric_features = [
     "temp", "humidity", "windspeed",
     "hour_sin", "hour_cos",
     "temp_humidity",
-    "month", "weekday", "day", 'holiday', 'workingday', 'year',
+    "month", "weekday", "day", 
+    #'holiday', 'workingday', 'year',
     #"is_peak_hour", 
     "is_working_peak"
 ]
-
 all_features = categorical_features + numeric_features
-X = df[all_features]
+#X = df[all_features]
+
 # LOG TRANSFORM TARGET
 Y = np.log1p(df['count'])
+
+# Remove leakage & correlations
+df = df.drop(columns=["count", "casual", "registered", "atemp"])  
+# Drop datetime (no use)
+df = df.drop(columns=["datetime", "hour"])
+X = df.copy()
+
 
 def get_feature_names(preprocessor):
     output_features = []
