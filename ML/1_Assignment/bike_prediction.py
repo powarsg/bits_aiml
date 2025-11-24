@@ -304,17 +304,16 @@ submission = pd.DataFrame({
 })
 submission.to_csv("submission.csv", index=False)
 
-
-test_pred_log_rf = rf_model.predict(X_test_processed)
-test_pred_rf = np.expm1(test_pred_log_rf)  # reverse log1p
-# No negative predictions
-test_pred_rf = np.maximum(test_pred_rf, 0)
-submission = pd.DataFrame({
-    "datetime": datetime_backup,
-    "count_GB": test_pred.round().astype(int),
-    "count_RF": test_pred_rf.round().astype(int)
-})
-submission.to_csv("submission_compare.csv", index=False)
+# compare RF & GB
+#test_pred_log_rf = rf_model.predict(X_test_processed)
+#test_pred_rf = np.expm1(test_pred_log_rf)  # reverse log1p
+#test_pred_rf = np.maximum(test_pred_rf, 0)
+#submission = pd.DataFrame({
+#    "datetime": datetime_backup,
+#    "count_GB": test_pred.round().astype(int),
+ #   "count_RF": test_pred_rf.round().astype(int)
+#})
+#submission.to_csv("submission_compare.csv", index=False)
 
 print("submission.csv generated successfully!")
 
