@@ -280,15 +280,15 @@ lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
 rf_model = train_random_forest(X_train, y_train_log, n_estimators=800, max_depth=17)
 #gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5)
 
+# hyper parameter - tunned
 gb_tuned = train_gradient_boosting(
     X_train, y_train_log,
-    learning_rate=0.030924079097806277,
+    learning_rate=0.0309,
     n_estimators=862,
     max_depth=5,
     min_samples_leaf=3,
     min_samples_split=7,
-    subsample=0.8147385973801488
-)
+    subsample=0.8147)
 
 print('9. Evaluate models ... ')
 results = {
@@ -329,5 +329,5 @@ def plot_feature_importance(name, model, preprocessor):
     plt.show()
 
 # Call it
-#plot_feature_importance( "Gradient Boosting" , gb_tuned, encoder)
+plot_feature_importance( "Gradient Boosting" , gb_tuned, encoder)
 
