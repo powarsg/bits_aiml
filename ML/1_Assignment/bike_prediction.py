@@ -12,7 +12,6 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score, m
 # ---------------------------------------------------------
 # 3. Model functions
 # ---------------------------------------------------------
-
 def train_linear_regression(X_train, y_train):
     print('4. train model : linear_regression')
     model = LinearRegression()
@@ -25,13 +24,11 @@ def train_ridge(X_train, y_train, alpha=1.0):
     model.fit(X_train, y_train)
     return model
 
-
 def train_lasso(X_train, y_train, alpha=0.001):
     print('6. train model : lasso')
     model = Lasso(alpha=alpha, max_iter=20000)
     model.fit(X_train, y_train)
     return model
-
 
 def train_random_forest(X_train, y_train, n_estimators=300, max_depth=None, random_state=42):
     print('7. train model : random_forest')
@@ -45,19 +42,8 @@ def train_random_forest(X_train, y_train, n_estimators=300, max_depth=None, rand
     return model
 
 
-def train_gradient_boosting(
-    X_train, 
-    y_train,
-    learning_rate=0.05, 
-    n_estimators=500, 
-    max_depth=4,
-    min_samples_leaf=1,
-    min_samples_split=2,
-    subsample=1.0,
-    random_state=42
-):
+def train_gradient_boosting(X_train, y_train, learning_rate=0.05, n_estimators=500, max_depth=4, min_samples_leaf=1, min_samples_split=2, subsample=1.0, random_state=42):
     print('8. train model : gradient_boosting')
-
     model = GradientBoostingRegressor(
         learning_rate=learning_rate,
         n_estimators=n_estimators,
@@ -67,7 +53,6 @@ def train_gradient_boosting(
         subsample=subsample,
         random_state=random_state
     )
-
     model.fit(X_train, y_train)
     return model
 
@@ -103,18 +88,14 @@ def evaluate_model(model, X_test, y_test_log):
 
 def get_feature_names(preprocessor):
     output_features = []
-
     for name, transformer, cols in preprocessor.transformers_:
         if name == "remainder":
             continue
-
         if hasattr(transformer, "get_feature_names_out"):
             ft_names = transformer.get_feature_names_out(cols)
         else:
             ft_names = cols
-
         output_features.extend(ft_names)
-
     return output_features
 
 # ---------------------------------------------------------
@@ -149,12 +130,12 @@ def add_derived_features(df):
     # Peak Hour Flag
     # ----------------------------
     peak_hours = [7, 8, 9, 16, 17, 18, 19]
-    df['is_peak_hour'] = df['hour'].isin(peak_hours).astype(int)
+    #df['is_peak_hour'] = df['hour'].isin(peak_hours).astype(int)
 
     # ----------------------------
     # Interaction: Working day × Peak hour = 0,1
     # ----------------------------
-    df['is_working_peak'] = df['workingday'] * df['is_peak_hour']
+    df['is_working_peak'] = df['workingday'] * df['hour'].isin(peak_hours).astype(int)
 
     # ----------------------------
     # Non-linear interaction
@@ -215,7 +196,8 @@ def preprocess_data(df):
     'temp_humidity',
     'month', 'weekday', 'day',
      #'hour', 
-    'is_peak_hour', 'is_working_peak'
+    #'is_peak_hour',
+    'is_working_peak'
     #'is_night'
     ]
 
