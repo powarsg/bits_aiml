@@ -32,9 +32,9 @@ df = pd.read_csv("bike_train.csv")
 #df.head(5)
 
 # LOG TRANSFORM TARGET
-Y = np.log1p(df['count'])
+#Y = np.log1p(df['count'])
 
-#Y = df['count']
+Y = df['count']
 
 # ------------------------------------------------------------------
 # Feature Engineering
@@ -260,14 +260,14 @@ def train_lightgbm(X_train, y_train,
 # ---------------------------------------------------------
 # Model Evaluation
 # ---------------------------------------------------------
-def evaluate_model(model, X_test, y_test_log):
+def evaluate_model(model, X_test, y_test):
     # Convert y_test back to original count scale
-    y_test = np.expm1(y_test_log)
+    ##y_test = np.expm1(y_test_log)
 
     # Predict log(count)
-    y_pred_log = model.predict(X_test)
+    y_pred = model.predict(X_test)
     # Convert prediction back
-    y_pred = np.expm1(y_pred_log)
+    ##y_pred = np.expm1(y_pred_log)
 
     # Safety for RMSLE
     y_pred = np.maximum(0, y_pred)
@@ -402,8 +402,8 @@ print(' Test Transformation - Features # : ', X_final_processed.shape[1])
 # ------------------------------------------------------------------
 # Predict using Best Model 
 # ------------------------------------------------------------------
-test_pred_log = cat_model.predict(X_final_processed)
-test_pred = np.expm1(test_pred_log)  # reverse log1p
+test_pred = cat_model.predict(X_final_processed)
+#test_pred = np.expm1(test_pred_log)  # reverse log1p
 # No negative predictions
 test_pred = np.maximum(test_pred, 0)
 
@@ -415,16 +415,17 @@ submission = pd.DataFrame({
     "count_predicted": test_pred.round().astype(int)
 })
 submission.to_csv("submission.csv", index=False)
-print("submission.csv generated successfully!")
+print("submission_nolog.csv generated successfully!")
 
 
 # compare CB & GB
-test_pred_log_gb = rf_model.predict(X_final_processed)
-test_pred_gb = np.expm1(test_pred_log_gb)  # reverse log1p
+test_pred_gb = rf_model.predict(X_final_processed)
+#test_pred_gb = np.expm1(test_pred_log_gb)  # reverse log1p
 test_pred_gb = np.maximum(test_pred_gb, 0)
 submission = pd.DataFrame({
     "datetime": datetime_backup,
     "count_CB": test_pred.round().astype(int),
    "count_GB": test_pred_gb.round().astype(int)
 })
-submission.to_csv("submission_CB_GB.csv", index=False)
+submission.to_csv("submission_CB_GB_nolog.csv", index=False)
+print("prediction successful !")
