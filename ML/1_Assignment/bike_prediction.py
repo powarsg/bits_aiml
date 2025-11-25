@@ -30,8 +30,11 @@ def parse_datetime(x):
 print('1. Reading training data...')
 df = pd.read_csv("bike_train.csv")
 #df.head(5)
+
 # LOG TRANSFORM TARGET
 Y = np.log1p(df['count'])
+
+#Y = df['count']
 
 # ------------------------------------------------------------------
 # Feature Engineering
@@ -394,14 +397,12 @@ X_final = test_df.copy()
 X_final_processed = preprocessor.transform(X_final)
 print(' Test Transformation - Shape : ', X_final_processed.shape)
 print(' Test Transformation - Features # : ', X_final_processed.shape[1])
-
-feature_names = get_feature_names(preprocessor)
-print(' Test Transformation - Features : ', feature_names)
+#print(' Test Transformation - Features : ', feature_names)
 
 # ------------------------------------------------------------------
 # Predict using Best Model 
 # ------------------------------------------------------------------
-test_pred_log = gb_tuned.predict(X_final_processed)
+test_pred_log = cat_model.predict(X_final_processed)
 test_pred = np.expm1(test_pred_log)  # reverse log1p
 # No negative predictions
 test_pred = np.maximum(test_pred, 0)
@@ -415,3 +416,15 @@ submission = pd.DataFrame({
 })
 submission.to_csv("submission.csv", index=False)
 print("submission.csv generated successfully!")
+
+
+# compare CB & GB
+test_pred_log_gb = rf_model.predict(X_final_processed)
+test_pred_gb = np.expm1(test_pred_log_gb)  # reverse log1p
+test_pred_gb = np.maximum(test_pred_gb, 0)
+submission = pd.DataFrame({
+    "datetime": datetime_backup,
+    "count_CB": test_pred.round().astype(int),
+   "count_GB": test_pred_gb.round().astype(int)
+})
+submission.to_csv("submission_CB_GB.csv", index=False)
