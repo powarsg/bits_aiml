@@ -300,7 +300,7 @@ test_pred = np.maximum(test_pred, 0)
 # ------------------------------------------------------------------
 submission = pd.DataFrame({
     "datetime": datetime_backup,
-    "count": test_pred.round().astype(int)
+    "count_predicted": test_pred.round().astype(int)
 })
 submission.to_csv("submission.csv", index=False)
 
