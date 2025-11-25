@@ -23,6 +23,12 @@ def parse_datetime(x):
             pass
     return pd.to_datetime(x)   # fallback
 
+def parse_train_datetime(x):
+    return pd.to_datetime(x, format="%Y-%m-%d %H:%M:%S")
+
+def parse_test_datetime(x):
+    return pd.to_datetime(x, format="%d-%m-%Y %H:%M")
+
 # ------------------------------------------------------------------
 # Load training data
 # ------------------------------------------------------------------
@@ -39,11 +45,16 @@ Y = np.log1p(df['count'])
 # ------------------------------------------------------------------
 # Feature Engineering
 # ------------------------------------------------------------------
-def add_derived_features(df):
+def add_derived_features(df, isTrain):
 
     # Parse datetime
     #df["datetime"] = pd.to_datetime(df["datetime"])
-    df["datetime"] = df["datetime"].apply(parse_datetime)
+    #df["datetime"] = df["datetime"].apply(parse_datetime)
+
+    if isTrain == True :
+        df["datetime"] = df["datetime"].apply(parse_train_datetime)
+    else:
+        df["datetime"] = df["datetime"].apply(parse_test_datetime)
 
     # Extract useful parts (but NOT using hour/year raw later)
     df["hour"] = df["datetime"].dt.hour
@@ -55,8 +66,8 @@ def add_derived_features(df):
     # ----------------------------
     # Cyclical Hour Encoding
     # ----------------------------
-    #df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
-    #df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
+    df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
+    df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
 
     # ----------------------------
     # Peak Hour Flag
@@ -67,12 +78,12 @@ def add_derived_features(df):
     # ----------------------------
     # Interaction: Working day × Peak hour = 0,1
     # ----------------------------
-    df['is_working_peak'] = df['workingday'] * df['hour'].isin(peak_hours).astype(int)
+    #df['is_working_peak'] = df['workingday'] * df['hour'].isin(peak_hours).astype(int)
 
     # ----------------------------
     # Non-linear interaction
     # ----------------------------
-    df['temp_humidity'] = df['temp'] * df['humidity']
+    #df['temp_humidity'] = df['temp'] * df['humidity']
     
     #df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
     # ----------------------------
@@ -96,12 +107,12 @@ print(f' Original Shape : {df.shape}' )
 print(f' Original Columns : {len(df.columns)}' )
 print(' Before : ', list(df.columns))
 
-df = add_derived_features(df)
+df = add_derived_features(df, True)
 
 # Remove leakage & correlations
 df = df.drop(columns=["count", "casual", "registered"])  
 # Drop datetime (no use)
-df = df.drop(columns=["datetime", "atemp"])
+df = df.drop(columns=["datetime", "hour", "atemp"])
 
 print(' After - Feature Engineering : ', list(df.columns))
 print(' After - Feature Engineering # : ', len(df.columns))
@@ -112,13 +123,14 @@ print(' After - Feature Engineering # : ', len(df.columns))
 # ------------------------------------------------------------------
 numeric_features = [
     "temp", "humidity", "windspeed",
-    #"hour_sin", "hour_cos",
-    "temp_humidity"
+    "hour_sin", "hour_cos",
+   # "temp_humidity"
 ]
 categorical_features = [
-    "season", "holiday", "workingday", "weather",
+    "season", "weather", 
+    #"holiday", "workingday"
     #"weekday", "day", "month", "year",
-    "is_working_peak"
+    #"is_working_peak"
 ]
 #all_features = categorical_features + numeric_features
 #X = df[all_features]
@@ -167,7 +179,7 @@ print(' All Features : ', feature_names)
 # Train-Test data split : 80-20 
 print('3. Split train-test data...')
 X_train, X_test, y_train_log, y_test_log = train_test_split(
-    X_processed, Y, test_size=0.30, random_state=42
+    X_processed, Y, test_size=0.20, random_state=42
 )
 
 # ---------------------------------------------------------
@@ -386,10 +398,20 @@ test_df = pd.read_csv("bike_test.csv")
 # save datetime
 datetime_backup = test_df["datetime"]
 
-test_df = add_derived_features(test_df)
+test_df = add_derived_features(test_df, False)
+
+debugDate = pd.DataFrame({
+    "datetime": datetime_backup,
+    "day": test_df["day"],
+    "month": test_df["month"],
+    "year": test_df["year"],
+    "hour": test_df["hour"],
+    "weekday": test_df["weekday"],
+})
+debugDate.to_csv("datetime_debug.csv", index=False)
 
 # Remove leakage & correlations
-test_df = test_df.drop(columns=["datetime", "atemp"])
+test_df = test_df.drop(columns=["datetime", "hour", "atemp"])
 
 #print(' Test - Feature Engineering : ', list(test_df.columns))
 print(' Test - Feature Engineering # : ', len(test_df.columns))
@@ -416,15 +438,3 @@ submission = pd.DataFrame({
 })
 submission.to_csv("submission.csv", index=False)
 print("submission.csv generated successfully!")
-
-
-# compare CB & GB
-test_pred_log_gb = rf_model.predict(X_final_processed)
-test_pred_gb = np.expm1(test_pred_log_gb)  # reverse log1p
-test_pred_gb = np.maximum(test_pred_gb, 0)
-submission = pd.DataFrame({
-    "datetime": datetime_backup,
-    "count_CB": test_pred.round().astype(int),
-   "count_GB": test_pred_gb.round().astype(int)
-})
-submission.to_csv("submission_CB_GB.csv", index=False)
