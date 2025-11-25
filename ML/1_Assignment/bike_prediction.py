@@ -128,8 +128,8 @@ numeric_features = [
 ]
 categorical_features = [
     "season", "weather", 
-    #"holiday", "workingday"
-    #"weekday", "day", "month", "year",
+    "holiday", "workingday",
+    "weekday", "day", "month", "year"
     #"is_working_peak"
 ]
 #all_features = categorical_features + numeric_features
@@ -400,16 +400,6 @@ datetime_backup = test_df["datetime"]
 
 test_df = add_derived_features(test_df, False)
 
-debugDate = pd.DataFrame({
-    "datetime": datetime_backup,
-    "day": test_df["day"],
-    "month": test_df["month"],
-    "year": test_df["year"],
-    "hour": test_df["hour"],
-    "weekday": test_df["weekday"],
-})
-debugDate.to_csv("datetime_debug.csv", index=False)
-
 # Remove leakage & correlations
 test_df = test_df.drop(columns=["datetime", "hour", "atemp"])
 
@@ -422,19 +412,43 @@ print(' Test Transformation - Features # : ', X_final_processed.shape[1])
 #print(' Test Transformation - Features : ', feature_names)
 
 # ------------------------------------------------------------------
-# Predict using Best Model 
+# Predict using CB Model 
 # ------------------------------------------------------------------
 test_pred_log = cat_model.predict(X_final_processed)
 test_pred = np.expm1(test_pred_log)  # reverse log1p
 # No negative predictions
 test_pred = np.maximum(test_pred, 0)
-
-# ------------------------------------------------------------------
-# Create submission CSV
-# ------------------------------------------------------------------
 submission = pd.DataFrame({
     "datetime": datetime_backup,
     "count_predicted": test_pred.round().astype(int)
 })
 submission.to_csv("submission.csv", index=False)
 print("submission.csv generated successfully!")
+
+# ------------------------------------------------------------------
+# Predict using GB Model 
+# ------------------------------------------------------------------
+test_pred_log_GB = gb_tuned.predict(X_final_processed)
+test_pred = np.expm1(test_pred_log_GB)  # reverse log1p
+# No negative predictions
+test_pred = np.maximum(test_pred, 0)
+submission = pd.DataFrame({
+    "datetime": datetime_backup,
+    "count_predicted": test_pred.round().astype(int)
+})
+submission.to_csv("submission_GB.csv", index=False)
+print("submission_GB.csv generated successfully!")
+
+# ------------------------------------------------------------------
+# Predict using RF Model 
+# ------------------------------------------------------------------
+test_pred_log_RF = rf_model.predict(X_final_processed)
+test_pred = np.expm1(test_pred_log_RF)  # reverse log1p
+# No negative predictions
+test_pred = np.maximum(test_pred, 0)
+submission = pd.DataFrame({
+    "datetime": datetime_backup,
+    "count_predicted": test_pred.round().astype(int)
+})
+submission.to_csv("submission_RF.csv", index=False)
+print("submission_RF.csv generated successfully!")
