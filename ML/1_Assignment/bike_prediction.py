@@ -16,7 +16,7 @@ def rmsle(y_true, y_pred):
     return np.sqrt(np.mean((np.log1p(y_pred) - np.log1p(y_true))**2))
 
 def parse_datetime(x):
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%m-%d-%Y %H:%M", "%d-%m-%Y %H:%M"):
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M"):
         try:
             return pd.to_datetime(x, format=fmt)
         except:
@@ -69,7 +69,7 @@ def add_derived_features(df):
     # ----------------------------
     # Non-linear interaction
     # ----------------------------
-    df['temp_humidity'] = df['temp'] * df['humidity']
+    df['temp_humidity'] = df['atemp'] * df['humidity']
     
     #df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
     # ----------------------------
@@ -107,14 +107,14 @@ print(' After - Feature Engineering # : ', len(df.columns))
 # ------------------------------------------------------------------
 # Feature sets
 # ------------------------------------------------------------------
-categorical_features = ["season", "weather"]
 numeric_features = [
     "temp", "humidity", "windspeed",
     "hour_sin", "hour_cos",
-    "temp_humidity",
-    "month", "weekday", "day", 
-    #'holiday', 'workingday', 'year',
-    #"is_peak_hour", 
+    "temp_humidity"
+]
+categorical_features = [
+    "season", "holiday", "workingday", "weather",
+    "weekday", "day", "month", "year",
     "is_working_peak"
 ]
 #all_features = categorical_features + numeric_features
@@ -164,7 +164,7 @@ print(' After Transformation - Features : ', feature_names)
 # Train-Test data split : 80-20 
 print('3. Split train-test data...')
 X_train, X_test, y_train_log, y_test_log = train_test_split(
-    X_processed, Y, test_size=0.2, random_state=42
+    X_processed, Y, test_size=0.30, random_state=42
 )
 
 # ---------------------------------------------------------
@@ -281,16 +281,16 @@ test_df = test_df.drop(columns=["datetime", "hour", "atemp"])
 
 #print(' Test - Feature Engineering : ', list(test_df.columns))
 print(' Test - Feature Engineering # : ', len(test_df.columns))
-X_test = test_df.copy()
-X_test_processed = preprocessor.transform(X_test)
-print(' Test Transformation - Shape : ', X_test_processed.shape)
-print(' Test Transformation - Features # : ', X_test_processed.shape[1])
+X_final = test_df.copy()
+X_final_processed = preprocessor.transform(X_final)
+print(' Test Transformation - Shape : ', X_final_processed.shape)
+print(' Test Transformation - Features # : ', X_final_processed.shape[1])
 #print(' Test Transformation - Features : ', feature_names)
 
 # ------------------------------------------------------------------
 # Predict using Best Model 
 # ------------------------------------------------------------------
-test_pred_log = gb_tuned.predict(X_test_processed)
+test_pred_log = gb_tuned.predict(X_final_processed)
 test_pred = np.expm1(test_pred_log)  # reverse log1p
 # No negative predictions
 test_pred = np.maximum(test_pred, 0)
@@ -366,8 +366,8 @@ def plot_model_residual(name, model, X_test, y_test_log):
     plt.show()
 
 # Call it
-#plot_feature_importance( "Gradient Boosting" , gb_tuned, preprocessor)
+plot_feature_importance("Gradient Boosting", gb_tuned, feature_names)
 
 # plot residuals
-#plot_model_residual('Gradient Boosting Regressor', gb_tuned, X_test, y_test_log)
+plot_model_residual('Gradient Boosting Regressor', gb_tuned, X_test, y_test_log)
 
