@@ -52,8 +52,8 @@ def add_derived_features(df):
     # ----------------------------
     # Cyclical Hour Encoding
     # ----------------------------
-    df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
-    df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
+    #df['hour_sin'] = np.sin(2 * np.pi * df['hour'] / 24)
+    #df['hour_cos'] = np.cos(2 * np.pi * df['hour'] / 24)
 
     # ----------------------------
     # Peak Hour Flag
@@ -69,7 +69,7 @@ def add_derived_features(df):
     # ----------------------------
     # Non-linear interaction
     # ----------------------------
-    df['temp_humidity'] = df['atemp'] * df['humidity']
+    df['temp_humidity'] = df['temp'] * df['humidity']
     
     #df['is_night'] = df['hour'].isin([0, 1, 2, 3, 4, 5]).astype(int)
     # ----------------------------
@@ -90,7 +90,7 @@ def add_derived_features(df):
 
 print('2. Preprocess data...')
 print(f' Original Shape : {df.shape}' )
-print(f' Original Features : {len(df.columns)-1}' )
+print(f' Original Columns : {len(df.columns)}' )
 print(' Before : ', list(df.columns))
 
 df = add_derived_features(df)
@@ -98,7 +98,7 @@ df = add_derived_features(df)
 # Remove leakage & correlations
 df = df.drop(columns=["count", "casual", "registered"])  
 # Drop datetime (no use)
-df = df.drop(columns=["datetime", "hour", "atemp"])
+df = df.drop(columns=["datetime", "atemp"])
 
 print(' After - Feature Engineering : ', list(df.columns))
 print(' After - Feature Engineering # : ', len(df.columns))
@@ -109,12 +109,12 @@ print(' After - Feature Engineering # : ', len(df.columns))
 # ------------------------------------------------------------------
 numeric_features = [
     "temp", "humidity", "windspeed",
-    "hour_sin", "hour_cos",
+    #"hour_sin", "hour_cos",
     "temp_humidity"
 ]
 categorical_features = [
     "season", "holiday", "workingday", "weather",
-    "weekday", "day", "month", "year",
+    #"weekday", "day", "month", "year",
     "is_working_peak"
 ]
 #all_features = categorical_features + numeric_features
@@ -158,7 +158,7 @@ X_processed = preprocessor.fit_transform(X)
 feature_names = get_feature_names(preprocessor)
 print(' After Transformation - Shape : ', X_processed.shape)
 print(' After Transformation - Features # : ', X_processed.shape[1])
-print(' After Transformation - Features : ', feature_names)
+print(' All Features : ', feature_names)
 
 
 # Train-Test data split : 80-20 
@@ -214,6 +214,46 @@ def train_gradient_boosting(X_train, y_train, learning_rate=0.05, n_estimators=5
     model.fit(X_train, y_train)
     return model
 
+from catboost import CatBoostRegressor
+def train_catboost(X_train, y_train, 
+                   iterations=1500, 
+                   learning_rate=0.03, 
+                   depth=8,
+                   random_state=42):
+    print('8.1. train model : CatBoost')
+    
+    model = CatBoostRegressor(
+        iterations=iterations,
+        learning_rate=learning_rate,
+        depth=depth,
+        loss_function='RMSE',
+        random_seed=random_state,
+        verbose=False
+    )
+    
+    model.fit(X_train, y_train)
+    return model
+
+from lightgbm import LGBMRegressor
+def train_lightgbm(X_train, y_train,
+                   n_estimators=1500,
+                   learning_rate=0.03,
+                   max_depth=-1,
+                   num_leaves=64,
+                   random_state=42):
+    print('8.2 train model : LightGBM')
+    model = LGBMRegressor(
+        n_estimators=n_estimators,
+        learning_rate=learning_rate,
+        max_depth=max_depth,
+        num_leaves=num_leaves,
+        objective='regression',
+        random_state=random_state
+    )
+
+    model.fit(X_train, y_train)
+    return model
+
 # ---------------------------------------------------------
 # Model Evaluation
 # ---------------------------------------------------------
@@ -235,7 +275,7 @@ def evaluate_model(model, X_test, y_test_log):
 
     results = {
         "RMSLE": rmsle(y_test, y_pred),
-        #"RMSLE-Sklearn": np.sqrt(mean_squared_log_error(y_test, y_pred)),
+        "RMSLE-Sklearn": np.sqrt(mean_squared_log_error(y_test, y_pred)),
         #"RMSE": np.sqrt(mean_squared_error(y_test, y_pred)),
         #"MAE": mean_absolute_error(y_test, y_pred),
         "R2": r2_score(y_test, y_pred)
@@ -245,77 +285,36 @@ def evaluate_model(model, X_test, y_test_log):
 
 # Train the models
 lin_model = train_linear_regression(X_train, y_train_log)
-ridge_model = train_ridge(X_train, y_train_log, alpha=1.0)
-lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
+#ridge_model = train_ridge(X_train, y_train_log, alpha=1.0)
+#lasso_model = train_lasso(X_train, y_train_log, alpha=0.01)
 rf_model = train_random_forest(X_train, y_train_log, n_estimators=800, max_depth=17)
 #gb_model = train_gradient_boosting(X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5)
-
 # hyper parameter - tunned
 gb_tuned = train_gradient_boosting( X_train, y_train_log, learning_rate=0.0309, n_estimators=862, max_depth=5, min_samples_leaf=3, min_samples_split=7, subsample=0.8147)
+
+# Example training call
+cat_model = train_catboost(X_train, y_train_log, iterations=1800, learning_rate=0.03, depth=8)
+
+# Example training call
+#lgb_model = train_lightgbm(X_train, y_train_log, n_estimators=1800, learning_rate=0.03, num_leaves=70)
+
+
 
 print('9. Evaluate models ... ')
 results = {
     "Linear Regression": evaluate_model(lin_model, X_test, y_test_log),
-    "Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
-    "Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
+    #"Ridge Regression": evaluate_model(ridge_model, X_test, y_test_log),
+    #"Lasso Regression": evaluate_model(lasso_model, X_test, y_test_log),
     "Random Forest": evaluate_model(rf_model, X_test, y_test_log),
     "Gradient Boosting": evaluate_model(gb_tuned, X_test, y_test_log),
+    "CatBoost" : evaluate_model(cat_model, X_test, y_test_log)
+    #"LightGBM": evaluate_model(lgb_model, X_test, y_test_log)
 }
 
 # Print results
 print(pd.DataFrame(results).T)
 
-# ------------------------------------------------------------------
-# Load test data and apply identical transformations
-# ------------------------------------------------------------------
-print('10. Start TESTING ... ')
-test_df = pd.read_csv("bike_test.csv")
 
-# save datetime
-datetime_backup = test_df["datetime"]
-
-test_df = add_derived_features(test_df)
-
-# Remove leakage & correlations
-test_df = test_df.drop(columns=["datetime", "hour", "atemp"])
-
-#print(' Test - Feature Engineering : ', list(test_df.columns))
-print(' Test - Feature Engineering # : ', len(test_df.columns))
-X_final = test_df.copy()
-X_final_processed = preprocessor.transform(X_final)
-print(' Test Transformation - Shape : ', X_final_processed.shape)
-print(' Test Transformation - Features # : ', X_final_processed.shape[1])
-#print(' Test Transformation - Features : ', feature_names)
-
-# ------------------------------------------------------------------
-# Predict using Best Model 
-# ------------------------------------------------------------------
-test_pred_log = gb_tuned.predict(X_final_processed)
-test_pred = np.expm1(test_pred_log)  # reverse log1p
-# No negative predictions
-test_pred = np.maximum(test_pred, 0)
-
-# ------------------------------------------------------------------
-# Create submission CSV
-# ------------------------------------------------------------------
-submission = pd.DataFrame({
-    "datetime": datetime_backup,
-    "count_predicted": test_pred.round().astype(int)
-})
-submission.to_csv("submission.csv", index=False)
-
-# compare RF & GB
-#test_pred_log_rf = rf_model.predict(X_test_processed)
-#test_pred_rf = np.expm1(test_pred_log_rf)  # reverse log1p
-#test_pred_rf = np.maximum(test_pred_rf, 0)
-#submission = pd.DataFrame({
-#    "datetime": datetime_backup,
-#    "count_GB": test_pred.round().astype(int),
- #   "count_RF": test_pred_rf.round().astype(int)
-#})
-#submission.to_csv("submission_compare.csv", index=False)
-
-print("submission.csv generated successfully!")
 
 
 import numpy as np
@@ -366,8 +365,53 @@ def plot_model_residual(name, model, X_test, y_test_log):
     plt.show()
 
 # Call it
-plot_feature_importance("Gradient Boosting", gb_tuned, feature_names)
+#plot_feature_importance("Gradient Boosting", gb_tuned, feature_names)
+#plot_feature_importance("Cat Boosting", cat_model, feature_names)
 
 # plot residuals
-plot_model_residual('Gradient Boosting Regressor', gb_tuned, X_test, y_test_log)
+#plot_model_residual('Gradient Boosting ', gb_tuned, X_test, y_test_log)
+#plot_model_residual('Cat Boost ', cat_model, X_test, y_test_log)
 
+
+
+# ------------------------------------------------------------------
+# Load test data and apply identical transformations
+# ------------------------------------------------------------------
+print('10. Start predicting ... ')
+test_df = pd.read_csv("bike_test.csv")
+
+# save datetime
+datetime_backup = test_df["datetime"]
+
+test_df = add_derived_features(test_df)
+
+# Remove leakage & correlations
+test_df = test_df.drop(columns=["datetime", "atemp"])
+
+#print(' Test - Feature Engineering : ', list(test_df.columns))
+print(' Test - Feature Engineering # : ', len(test_df.columns))
+X_final = test_df.copy()
+X_final_processed = preprocessor.transform(X_final)
+print(' Test Transformation - Shape : ', X_final_processed.shape)
+print(' Test Transformation - Features # : ', X_final_processed.shape[1])
+
+feature_names = get_feature_names(preprocessor)
+print(' Test Transformation - Features : ', feature_names)
+
+# ------------------------------------------------------------------
+# Predict using Best Model 
+# ------------------------------------------------------------------
+test_pred_log = gb_tuned.predict(X_final_processed)
+test_pred = np.expm1(test_pred_log)  # reverse log1p
+# No negative predictions
+test_pred = np.maximum(test_pred, 0)
+
+# ------------------------------------------------------------------
+# Create submission CSV
+# ------------------------------------------------------------------
+submission = pd.DataFrame({
+    "datetime": datetime_backup,
+    "count_predicted": test_pred.round().astype(int)
+})
+submission.to_csv("submission.csv", index=False)
+print("submission.csv generated successfully!")

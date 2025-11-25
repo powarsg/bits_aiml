@@ -3,3 +3,6 @@
 *.zip
 
 *.png
+*.tsv
+*.json
+*.tfevents
