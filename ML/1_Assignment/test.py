@@ -95,3 +95,55 @@ for fold, (train_index, test_index) in enumerate(tscv.split(X_processed_df)):
 # After loop — last X_train/X_test become your final train-validation sets
 print("\nFinal Train Shape:", X_train.shape)
 print("Final Test Shape:", X_test.shape)
+
+
+
+
+
+
+
+
+
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_log_error, r2_score
+
+SEEDS = [0, 1, 7, 12, 42, 101, 2024]
+
+def evaluate_seed(seed, pipeline, X, y):
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=seed
+    )
+
+    pipeline.fit(X_train, y_train)
+    y_pred = pipeline.predict(X_test)
+    y_pred = np.maximum(0, y_pred)
+
+    rmsle = np.sqrt(mean_squared_log_error(y_test, y_pred))
+    r2 = r2_score(y_test, y_pred)
+
+    return rmsle, r2
+
+
+# ---------------------------
+# RUN MULTIPLE SEED TESTS
+# ---------------------------
+results = []
+
+for seed in SEEDS:
+    rmsle, r2 = evaluate_seed(seed, pipeline, X, y)
+    results.append([seed, rmsle, r2])
+    print(f"Seed {seed}: RMSLE={rmsle:.5f}, R²={r2:.5f}")
+
+# Convert to DataFrame
+df_results = pd.DataFrame(results, columns=["seed", "rmsle", "r2"])
+
+print("\n------ SUMMARY ------")
+print(df_results)
+
+print("\nAverage RMSLE :", df_results["rmsle"].mean())
+print("Std Dev RMSLE:", df_results["rmsle"].std())
+
+print("\nAverage R²    :", df_results["r2"].mean())
+print("Std Dev R²    :", df_results["r2"].std())

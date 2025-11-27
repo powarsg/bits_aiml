@@ -1,48 +1,71 @@
-# ================================================================
-#  BIKE SHARING FULL PIPELINE
-#  TRAIN  →  SAVE MODEL  →  LOAD TEST  →  PREDICT  →  SAVE OUTPUT
-# ================================================================
-
-import pandas as pd
+# kaggle_final_pipeline.py
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures, StandardScaler
+import pandas as pd
 from sklearn.pipeline import Pipeline
+from sklearn.compose import ColumnTransformer
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
+from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_log_error, r2_score
 from joblib import dump, load
+import warnings
+warnings.filterwarnings("ignore")
 
-dateformat_train = "%Y-%m-%d %H:%M:%S"
-dateformat_test = "%d-%m-%Y %H:%M"
-# ---------------------------------------------------------
-# Custom RMSLE Function
-# ---------------------------------------------------------
-def rmsle(y_true, y_pred):
-    #y_pred = np.maximum(0, y_pred)  # RMSLE requires non-negative predictions
-    return np.sqrt(np.mean((np.log1p(y_pred) - np.log1p(y_true))**2))
+# ----------------------------
+# Config / feature lists
+# ----------------------------
+TRAIN_FILE = "bike_train.csv"
+TEST_FILE = "bike_test.csv"
 
-def parse_train_datetime(x):
-    return pd.to_datetime(x, format="%Y-%m-%d %H:%M:%S")
+# feature groups (as you've been using)
+numeric_poly = ["temp", "atemp"]   # will get PolynomialFeatures(degree=2)
+numeric_other = [
+    "humidity", "windspeed",
+    "hour_sin", "hour_cos",
+    "weekday_sin", "weekday_cos",
+    "month_sin", "month_cos",
+    "temp_humidity", "feels_like_diff"
+]
+categorical = [
+    "season", "weather", "holiday", "workingday",
+    "year", "is_weekend", "is_rush_hour"
+]
 
-def parse_test_datetime(x):
-    return pd.to_datetime(x, format="%d-%m-%Y %H:%M")
+FEATURES = numeric_poly + numeric_other + categorical
 
-# -----------------------------------------------------------
-# STEP 1: FEATURE ENGINEERING (REUSED FOR TRAIN + TEST)
-# -----------------------------------------------------------
+# ----------------------------
+# Robust datetime parser (handles both formats)
+# ----------------------------
+def parse_datetime_series(s):
+    # try train format, then test format, then let pandas infer
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M"):
+        try:
+            parsed = pd.to_datetime(s.astype(str), format=fmt, errors="coerce")
+            if parsed.notna().sum() > 0:
+                # if at least some parsed, return parsed (remaining NaT handle later)
+                return parsed
+        except Exception:
+            pass
+    # fallback: auto-parse (slower)
+    return pd.to_datetime(s, errors="coerce")
 
-def add_datetime_features(df, dateformat):
-
-    df["datetime"] = pd.to_datetime(df["datetime"], format=dateformat)
-
-    # Base components
+# ----------------------------
+# Feature engineering (used for train and test)
+# ----------------------------
+def add_datetime_features(df):
+    df = df.copy()
+    df["datetime"] = parse_datetime_series(df["datetime"])
+    if df["datetime"].isna().any():
+        # If any unparsable rows remain, raise to catch problem early
+        nbad = df["datetime"].isna().sum()
+        raise ValueError(f"{nbad} datetime rows could not be parsed. Check formats.")
+    # basic parts
     df["hour"] = df["datetime"].dt.hour
     df["weekday"] = df["datetime"].dt.weekday
     df["month"] = df["datetime"].dt.month
     df["year"] = df["datetime"].dt.year
 
-    # Cyclic Encoding
+    # cyclic encodings
     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
     df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
 
@@ -52,139 +75,158 @@ def add_datetime_features(df, dateformat):
     df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
     df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
 
-    # Binary features
+    # binary features
     df["is_weekend"] = df["weekday"].isin([5, 6]).astype(int)
     df["is_rush_hour"] = df["hour"].isin([7, 8, 9, 16, 17, 18, 19]).astype(int)
 
-    # Interaction features
+    # interactions
+    # ensure numeric columns exist before computing
     df["temp_humidity"] = df["temp"] * df["humidity"]
     df["feels_like_diff"] = df["atemp"] - df["temp"]
 
     return df
 
+# ----------------------------
+# RMSLE helper
+# ----------------------------
+def rmsle(y_true, y_pred):
+    y_pred = np.maximum(0, y_pred)
+    return np.sqrt(mean_squared_log_error(y_true, y_pred))
 
-# -----------------------------------------------------------
-# STEP 2: LOAD TRAIN CSV AND ENGINEER FEATURES
-# -----------------------------------------------------------
+# ----------------------------
+# Load train, engineer features
+# ----------------------------
+train = pd.read_csv(TRAIN_FILE)
+train = add_datetime_features(train)
 
-TRAIN_FILE = "bike_train.csv"     # make sure this exists
-TEST_FILE = "bike_test.csv"       # test data
-MODEL_FILE = "bike_final_model.pkl"
-OUTPUT_FILE = "submission_new_RF.csv"
+# Clip category ranges to safe bounds (Kaggle dataset known ranges)
+train["season"] = train["season"].clip(1, 4).astype(int)
+train["weather"] = train["weather"].clip(1, 4).astype(int)
+train["holiday"] = train["holiday"].astype(int)
+train["workingday"] = train["workingday"].astype(int)
 
-train_df = pd.read_csv(TRAIN_FILE)
-train_df = add_datetime_features(train_df, dateformat_train)
+# keep only needed columns for model
+X_all = train[FEATURES].copy()
+y_all = train["count"].copy()
 
-# Target
-y = train_df["count"]
+# ----------------------------
+# Time-order split (80/20) for validation
+# ----------------------------
+train_sorted = train.sort_values("datetime").reset_index(drop=True)
+split_index = int(len(train_sorted) * 0.8)
 
-# Base Features
-numeric_poly = ["temp", "atemp"]
+X_train = train_sorted.loc[: split_index - 1, FEATURES].copy()
+y_train = train_sorted.loc[: split_index - 1, "count"].copy()
 
-numeric_other = [
-    "humidity", "windspeed",
-    "hour_sin", "hour_cos",
-    "weekday_sin", "weekday_cos",
-    "month_sin", "month_cos",
-    "temp_humidity", "feels_like_diff"
-]
+X_valid = train_sorted.loc[split_index:, FEATURES].copy()
+y_valid = train_sorted.loc[split_index:, "count"].copy()
 
-categorical = [
-    "season", "weather", "holiday", "workingday",
-    "year", "is_weekend", "is_rush_hour"
-]
+print(f"Train rows: {len(X_train)}, Valid rows: {len(X_valid)}")
 
+# ----------------------------
+# Preprocessing: polynomial on temp/atemp, scale others, OHE for categoricals
+# Note: we will fit this only on training data and reuse for validation/test
+# ----------------------------
+preprocess = ColumnTransformer(transformers=[
+    ("poly", PolynomialFeatures(degree=2, include_bias=False), numeric_poly),
+    ("num", StandardScaler(), numeric_other),
+    ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical)
+], remainder="drop")
 
-FEATURES = numeric_poly + numeric_other + categorical
-X = train_df[FEATURES]
+# Fit preprocess on X_train to learn scalers & categories
+preprocess.fit(X_train)
 
-# -----------------------------------------------------------
-# STEP 3: TRAIN/TEST SPLIT FOR VALIDATION
-# -----------------------------------------------------------
+# Fill any missing numeric values in train/valid using training medians (stable)
+train_median = X_train[numeric_poly + numeric_other].median()
+X_train[numeric_poly + numeric_other] = X_train[numeric_poly + numeric_other].fillna(train_median)
+X_valid[numeric_poly + numeric_other] = X_valid[numeric_poly + numeric_other].fillna(train_median)
 
-X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2
-     #, random_state=42
-)
-
-# -----------------------------------------------------------
-# STEP 4: PREPROCESSING PIPELINE
-# -----------------------------------------------------------
-preprocess = ColumnTransformer(
-    transformers=[
-        ("poly", PolynomialFeatures(degree=2, include_bias=False), numeric_poly),
-        ("num", StandardScaler(), numeric_other),
-        ("cat", OneHotEncoder(handle_unknown="ignore"), categorical)
-    ],
-    remainder="drop"
-)
-
-# -----------------------------------------------------------
-# STEP 5: MODEL — Random Forest (Best Performing)
-# -----------------------------------------------------------
-
-model = RandomForestRegressor(
-        n_estimators=800, max_depth=18,
-        min_samples_split=4, min_samples_leaf=2,
-        random_state=42, n_jobs=-1
+# ----------------------------
+# Models to train & evaluate (we will create pipelines)
+# ----------------------------
+models = {
+    "Linear": LinearRegression(),
+    "Ridge": Ridge(alpha=1.0),
+    "Lasso": Lasso(alpha=0.001, max_iter=20000),
+    "RandomForest": RandomForestRegressor(
+        n_estimators=800, max_depth=18, min_samples_split=4, min_samples_leaf=2, random_state=42, n_jobs=-1
     )
+}
 
-pipeline = Pipeline([
-    ("preprocess", preprocess),
-    ("model", model)
-])
+results = {}
 
-# -----------------------------------------------------------
-# STEP 6: TRAIN MODEL
-# -----------------------------------------------------------
-print("Training model...")
-pipeline.fit(X_train, y_train)
+# Train & evaluate on time-split validation
+for name, base_model in models.items():
+    pipe = Pipeline([
+        ("pre", preprocess),
+        ("model", base_model)
+    ])
+    pipe.fit(X_train, y_train)
 
-# -----------------------------------------------------------
-# STEP 7: VALIDATE MODEL
-# -----------------------------------------------------------
-y_pred = pipeline.predict(X_test)
-y_pred = np.maximum(0, y_pred)
+    # validation predictions
+    yv = pipe.predict(X_valid)
+    score_rmsle = rmsle(y_valid, yv)
+    score_r2 = r2_score(y_valid, yv)
+    results[name] = {"RMSLE_valid": score_rmsle, "R2_valid": score_r2}
+    #print(f"{name:12s}  RMSLE_valid={score_rmsle:.5f}  R2_valid={score_r2:.5f}")
 
-rmsle = mean_squared_log_error(y_test, y_pred) ** 0.5
-r2 = r2_score(y_test, y_pred)
+print("\nValidation results:")
+print(pd.DataFrame(results).T)
 
-print("\n----- MODEL PERFORMANCE -----")
-print("RMSLE :", rmsle)
-print("R²    :", r2)
+# ----------------------------
+# Final: retrain on FULL training data, then predict test
+# ----------------------------
+# Prepare final preprocess fit on full X_all (fit again to include all categories / scales)
+# But safer approach: fit preprocess on X_all to include all categories
+preprocess_full = ColumnTransformer(transformers=[
+    ("poly", PolynomialFeatures(degree=2, include_bias=False), numeric_poly),
+    ("num", StandardScaler(), numeric_other),
+    ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical)
+], remainder="drop")
+preprocess_full.fit(X_all.fillna(train_median))
 
-# -----------------------------------------------------------
-# STEP 8: SAVE MODEL (PIPELINE + PREPROCESSING TOGETHER)
-# -----------------------------------------------------------
-dump(pipeline, MODEL_FILE)
-print(f"\nModel saved as: {MODEL_FILE}")
+# Ensure we prepare test dataframe with same engineered columns
+test = pd.read_csv(TEST_FILE)
+datetime_backup = test["datetime"].astype(str)  # preserve original string formatting for submission
+test = add_datetime_features(test)
 
-# -----------------------------------------------------------
-# STEP 9: LOAD TEST DATA AND PREDICT
-# -----------------------------------------------------------
-print("\nLoading test file...")
-test_df = pd.read_csv(TEST_FILE)
-# save datetime
-datetime_backup = test_df["datetime"]
+# Clip categories and fill missing numerics
+test["season"] = test["season"].clip(1, 4).astype(int)
+test["weather"] = test["weather"].clip(1, 4).astype(int)
+test["holiday"] = test["holiday"].astype(int)
+test["workingday"] = test["workingday"].astype(int)
 
-test_df = add_datetime_features(test_df, dateformat_test)
+# fill numeric missing with train medians
+test[numeric_poly + numeric_other] = test[numeric_poly + numeric_other].fillna(train_median)
 
-X_test = test_df[FEATURES]
+X_test_final = test[FEATURES].copy()
 
-pipeline_loaded = load(MODEL_FILE)
+# produce submissions per model (retrain each on full data)
+for name, base_model in models.items():
+    pipe_full = Pipeline([
+        ("pre", preprocess_full),
+        ("model", base_model)
+    ])
+    # retrain on entire training set (X_all)
+    pipe_full.fit(X_all.fillna(train_median), y_all)
 
-test_pred = pipeline_loaded.predict(X_test)
-test_pred = np.maximum(0, test_pred)
+    preds = pipe_full.predict(X_test_final)
+    preds = np.maximum(0, preds)       # no negatives
+    preds_rounded = np.round(preds).astype(int)
 
-submission = pd.DataFrame({
-    "datetime": datetime_backup,
-    "count_predicted": test_pred.round().astype(int)
-})
-submission.to_csv("submission_RF_py.csv", index=False)
-print(f"submission_RF_py.csv generated successfully!")
-# -----------------------------------------------------------
-# DONE
-# -----------------------------------------------------------
+    sub_df = pd.DataFrame({
+        "datetime": datetime_backup,
+        "count_predicted": preds_rounded
+    })
+
+    out_filename = f"submission_{name}.csv"
+    sub_df.to_csv(out_filename, index=False)
+    print(f"Wrote {out_filename}")
+
+print("\nAll done. Check the CSVs and upload the one you prefer to Kaggle.")
+
+
+
 
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -235,4 +277,6 @@ def plot_feature_importance(name, numeric_poly, numeric_other, categorical, X_tr
 
 # Call it - "Random Forest"   # or "XGBoost"
 #plot_feature_importance("XGBoost" , models_all, numeric_poly, numeric_other, categorical, X_train, X_test, y_train)
-plot_feature_importance("Random Forest" , numeric_poly, numeric_other, categorical, X_train, X_test, y_train)
+#plot_feature_importance("Random Forest" , numeric_poly, numeric_other, categorical, X_train, X_test, y_train)
+
+
