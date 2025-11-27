@@ -103,7 +103,8 @@ X = train_df[FEATURES]
 # -----------------------------------------------------------
 
 X_train, X_test, y_train, y_test = train_test_split(
-    X, y, test_size=0.2, random_state=42
+    X, y, test_size=0.2
+     #, random_state=42
 )
 
 # -----------------------------------------------------------
@@ -123,7 +124,7 @@ preprocess = ColumnTransformer(
 # -----------------------------------------------------------
 
 model = RandomForestRegressor(
-        n_estimators=300, max_depth=20,
+        n_estimators=800, max_depth=18,
         min_samples_split=4, min_samples_leaf=2,
         random_state=42, n_jobs=-1
     )
@@ -161,7 +162,6 @@ print(f"\nModel saved as: {MODEL_FILE}")
 # -----------------------------------------------------------
 # STEP 9: LOAD TEST DATA AND PREDICT
 # -----------------------------------------------------------
-
 print("\nLoading test file...")
 test_df = pd.read_csv(TEST_FILE)
 # save datetime
@@ -180,9 +180,11 @@ submission = pd.DataFrame({
     "datetime": datetime_backup,
     "count_predicted": test_pred.round().astype(int)
 })
-submission.to_csv(OUTPUT_FILE, index=False)
-print(f"{OUTPUT_FILE} generated successfully!")
-
+submission.to_csv("submission_RF_py.csv", index=False)
+print(f"submission_RF_py.csv generated successfully!")
+# -----------------------------------------------------------
+# DONE
+# -----------------------------------------------------------
 
 import matplotlib.pyplot as plt
 import seaborn as sns
