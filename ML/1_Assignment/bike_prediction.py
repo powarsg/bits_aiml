@@ -1,282 +1,272 @@
-# kaggle_final_pipeline.py
+# Bike Sharing: Feature Engineering + Modeling
+# Jupyter-ready Python script (can be pasted into a notebook cell-by-cell)
+# Steps: Load -> Clean -> Feature engineering -> Split -> Pipelines -> Models (Linear, Ridge, Lasso, RandomForest)
+
+# 0. Install / imports (run in a cell)
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import OneHotEncoder, StandardScaler, PolynomialFeatures
 from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.metrics import mean_squared_log_error, r2_score
-from joblib import dump, load
-import warnings
-warnings.filterwarnings("ignore")
+from sklearn.metrics import mean_squared_log_error, mean_squared_error, r2_score
 
-# ----------------------------
-# Config / feature lists
-# ----------------------------
-TRAIN_FILE = "bike_train.csv"
-TEST_FILE = "bike_test.csv"
+# Helper metric functions
+import math
 
-# feature groups (as you've been using)
-numeric_poly = ["temp", "atemp"]   # will get PolynomialFeatures(degree=2)
-numeric_other = [
-    "humidity", "windspeed",
-    "hour_sin", "hour_cos",
-    "weekday_sin", "weekday_cos",
-    "month_sin", "month_cos",
-    "temp_humidity", "feels_like_diff"
-]
-categorical = [
-    "season", "weather", "holiday", "workingday",
-    "year", "is_weekend", "is_rush_hour"
-]
+def rmse(y_true, y_pred):
+    return math.sqrt(mean_squared_error(y_true, y_pred))
 
-FEATURES = numeric_poly + numeric_other + categorical
+def rmsle(y_true, y_pred):
+    # clip predictions to avoid negative values inside log
+    y_pred_clip = np.clip(y_pred, 0, None)
+    return math.sqrt(mean_squared_log_error(y_true, y_pred_clip))
 
-# ----------------------------
-# Robust datetime parser (handles both formats)
-# ----------------------------
-def parse_datetime_series(s):
-    # try train format, then test format, then let pandas infer
-    for fmt in ("%Y-%m-%d %H:%M:%S", "%d-%m-%Y %H:%M"):
-        try:
-            parsed = pd.to_datetime(s.astype(str), format=fmt, errors="coerce")
-            if parsed.notna().sum() > 0:
-                # if at least some parsed, return parsed (remaining NaT handle later)
-                return parsed
-        except Exception:
-            pass
-    # fallback: auto-parse (slower)
-    return pd.to_datetime(s, errors="coerce")
+# 1. Load your dataset (replace path with your csv)
+# df = pd.read_csv('train.csv', parse_dates=['datetime'])
+# For notebook: uncomment above and set correct path
 
-# ----------------------------
-# Feature engineering (used for train and test)
-# ----------------------------
-def add_datetime_features(df):
+# 2. Basic cleaning and insights
+# - If dataset already has 'count' and separated 'casual'/'registered', we'll predict 'count'
+# - Drop duplicates / missing handling as needed
+
+# 3. Feature engineering (clean & important features only)
+# We'll follow the "recommended" recipe:
+# Keep: hour, month, year, is_weekend, is_rush_hour, temp (drop atemp), humidity, windspeed, weather, workingday, holiday
+# Drop: season (redundant with month), atemp (redundant with temp)
+dateformat_train = "%Y-%m-%d %H:%M:%S"
+dateformat_test = "%d-%m-%Y %H:%M"
+
+def feature_engineer(df, dateformat, drop_original_datetime=True, ):
     df = df.copy()
-    df["datetime"] = parse_datetime_series(df["datetime"])
-    if df["datetime"].isna().any():
-        # If any unparsable rows remain, raise to catch problem early
-        nbad = df["datetime"].isna().sum()
-        raise ValueError(f"{nbad} datetime rows could not be parsed. Check formats.")
+
+    df["datetime"] = pd.to_datetime(df["datetime"], format=dateformat)
+
     # basic parts
-    df["hour"] = df["datetime"].dt.hour
-    df["weekday"] = df["datetime"].dt.weekday
-    df["month"] = df["datetime"].dt.month
-    df["year"] = df["datetime"].dt.year
-
-    # cyclic encodings
-    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
-
-    df["weekday_sin"] = np.sin(2 * np.pi * df["weekday"] / 7)
-    df["weekday_cos"] = np.cos(2 * np.pi * df["weekday"] / 7)
-
-    df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
-    df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
+    df['hour'] = df['datetime'].dt.hour
+    df['weekday'] = df['datetime'].dt.weekday
+    df['month'] = df['datetime'].dt.month
+    df['year'] = df['datetime'].dt.year.astype(str)  # treat year as categorical (string) or numeric depending on model
 
     # binary features
-    df["is_weekend"] = df["weekday"].isin([5, 6]).astype(int)
-    df["is_rush_hour"] = df["hour"].isin([7, 8, 9, 16, 17, 18, 19]).astype(int)
+    df['is_weekend'] = df['weekday'].isin([5,6]).astype(int)
+    df['is_rush_hour'] = df['hour'].isin([7,8,9,16,17,18,19]).astype(int)
 
-    # interactions
-    # ensure numeric columns exist before computing
-    df["temp_humidity"] = df["temp"] * df["humidity"]
-    df["feels_like_diff"] = df["atemp"] - df["temp"]
+    # interactions (small and interpretable)
+    # temp * (1 - humidity) might capture comfortable conditions; keep simple interaction
+    df['temp_humidity_interaction'] = df['temp'] * (1 - df['humidity'])
+
+    # drop redundant cols if present
+    if 'atemp' in df.columns:
+        # choose to keep 'temp' and drop 'atemp'
+        df = df.drop(columns=['atemp'])
+    if 'season' in df.columns:
+        df = df.drop(columns=['season'])
+
+    if drop_original_datetime:
+        df = df.drop(columns=['datetime'])
 
     return df
 
-# ----------------------------
-# RMSLE helper
-# ----------------------------
-def rmsle(y_true, y_pred):
-    y_pred = np.maximum(0, y_pred)
-    return np.sqrt(mean_squared_log_error(y_true, y_pred))
+# 4. Prepare features and target, then split
+# Example usage (uncomment after loading df):
+# df = feature_engineer(df)
+# target = 'count'
+# X = df.drop(columns=[target, 'casual', 'registered'] if set(['casual','registered']).issubset(df.columns) else [target])
+# y = df[target]
 
-# ----------------------------
-# Load train, engineer features
-# ----------------------------
-train = pd.read_csv(TRAIN_FILE)
-train = add_datetime_features(train)
+# Then split:
+# X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# Clip category ranges to safe bounds (Kaggle dataset known ranges)
-train["season"] = train["season"].clip(1, 4).astype(int)
-train["weather"] = train["weather"].clip(1, 4).astype(int)
-train["holiday"] = train["holiday"].astype(int)
-train["workingday"] = train["workingday"].astype(int)
+# 5. Pipelines
+# We'll build two pipelines:
+#  A) For linear models (LinearRegression, Ridge, Lasso):
+#     - numeric: StandardScaler + optional PolynomialFeatures
+#     - categorical: OneHotEncoder(drop='first')
+#  B) For RandomForest:
+#     - numeric: pass-through (no scaling) or StandardScaler optional
+#     - categorical: OneHotEncoder(drop='first')
 
-# keep only needed columns for model
-X_all = train[FEATURES].copy()
-y_all = train["count"].copy()
+numeric_features = ['temp', 'humidity', 'windspeed', 'hour', 'month', 'is_weekend', 'is_rush_hour', 'temp_humidity_interaction']
+# Note: 'year' kept as categorical below, 'workingday', 'holiday', 'weather' are categorical
+categorical_features = ['year', 'workingday', 'holiday', 'weather']
 
-# ----------------------------
-# Time-order split (80/20) for validation
-# ----------------------------
-train_sorted = train.sort_values("datetime").reset_index(drop=True)
-split_index = int(len(train_sorted) * 0.8)
+# transformers
+numeric_transformer_linear = Pipeline(steps=[
+    ('scaler', StandardScaler()),
+    # Polynomial will be injected inside model pipeline with degree=2 when required
+])
 
-X_train = train_sorted.loc[: split_index - 1, FEATURES].copy()
-y_train = train_sorted.loc[: split_index - 1, "count"].copy()
+numeric_transformer_rf = Pipeline(steps=[
+    # for RF we do not need scaling; keep as passthrough or add simple scaler if desired
+])
 
-X_valid = train_sorted.loc[split_index:, FEATURES].copy()
-y_valid = train_sorted.loc[split_index:, "count"].copy()
+categorical_transformer = OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore')
 
-print(f"Train rows: {len(X_train)}, Valid rows: {len(X_valid)}")
+preprocessor_linear = ColumnTransformer(transformers=[
+    ('num', numeric_transformer_linear, numeric_features),
+    ('cat', categorical_transformer, categorical_features)
+])
 
-# ----------------------------
-# Preprocessing: polynomial on temp/atemp, scale others, OHE for categoricals
-# Note: we will fit this only on training data and reuse for validation/test
-# ----------------------------
-preprocess = ColumnTransformer(transformers=[
-    ("poly", PolynomialFeatures(degree=2, include_bias=False), numeric_poly),
-    ("num", StandardScaler(), numeric_other),
-    ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical)
-], remainder="drop")
+preprocessor_rf = ColumnTransformer(transformers=[
+    ('num', 'passthrough', numeric_features),
+    ('cat', categorical_transformer, categorical_features)
+])
 
-# Fit preprocess on X_train to learn scalers & categories
-preprocess.fit(X_train)
+# 6. Model pipelines
+# Linear
+pipe_lin = Pipeline(steps=[
+    ('pre', preprocessor_linear),
+    ('poly', PolynomialFeatures(degree=2, include_bias=False)),  # degree can be changed to 2 for interactions
+    ('model', LinearRegression())
+])
 
-# Fill any missing numeric values in train/valid using training medians (stable)
-train_median = X_train[numeric_poly + numeric_other].median()
-X_train[numeric_poly + numeric_other] = X_train[numeric_poly + numeric_other].fillna(train_median)
-X_valid[numeric_poly + numeric_other] = X_valid[numeric_poly + numeric_other].fillna(train_median)
+# Ridge
+pipe_ridge = Pipeline(steps=[
+    ('pre', preprocessor_linear),
+    ('poly', PolynomialFeatures(degree=2, include_bias=False)),
+    ('model', Ridge())
+])
 
-# ----------------------------
-# Models to train & evaluate (we will create pipelines)
-# ----------------------------
-models = {
-    "Linear": LinearRegression(),
-    "Ridge": Ridge(alpha=1.0),
-    "Lasso": Lasso(alpha=0.001, max_iter=20000),
-    "RandomForest": RandomForestRegressor(
-        n_estimators=800, max_depth=18, min_samples_split=4, min_samples_leaf=2, random_state=42, n_jobs=-1
-    )
-}
+# Lasso
+pipe_lasso = Pipeline(steps=[
+    ('pre', preprocessor_linear),
+    ('poly', PolynomialFeatures(degree=2, include_bias=False)),
+    ('model', Lasso(max_iter=5000))
+])
 
-results = {}
+# Random Forest
+pipe_rf = Pipeline(steps=[
+    ('pre', preprocessor_rf),
+    ('model', RandomForestRegressor(n_estimators=800, random_state=42, n_jobs=-1))
+])
 
-# Train & evaluate on time-split validation
-for name, base_model in models.items():
-    pipe = Pipeline([
-        ("pre", preprocess),
-        ("model", base_model)
-    ])
-    pipe.fit(X_train, y_train)
+# 7. Utility function to run training + evaluation
+from time import time
 
-    # validation predictions
-    yv = pipe.predict(X_valid)
-    score_rmsle = rmsle(y_valid, yv)
-    score_r2 = r2_score(y_valid, yv)
-    results[name] = {"RMSLE_valid": score_rmsle, "R2_valid": score_r2}
-    #print(f"{name:12s}  RMSLE_valid={score_rmsle:.5f}  R2_valid={score_r2:.5f}")
+def fit_and_eval(pipeline, X_train, X_test, y_train, y_test, name='model'):
+    t0 = time()
+    pipeline.fit(X_train, y_train)
+    t1 = time()
+    preds = pipeline.predict(X_test)
+    res = {
+        'name': name,
+        #'RMSE': rmse(y_test, preds),
+        'RMSLE': rmsle(y_test, preds),
+        'R2': r2_score(y_test, preds),
+        'fit_time_s': t1 - t0
+    }
+    print(f"{name} -> RMSLE: {res['RMSLE']:.4f}, R2: {res['R2']:.4f}, fit_time: {res['fit_time_s']:.1f}s")
+    return res
 
-print("\nValidation results:")
-print(pd.DataFrame(results).T)
+# 8. Hyperparameter tuning suggestions (small grid examples)
+# For polynomial features with linear models, try degree 1 (baseline) and 2 (interactions).
+# For Ridge/Lasso tune alpha. For RF tune n_estimators, max_depth.
 
-# ----------------------------
-# Final: retrain on FULL training data, then predict test
-# ----------------------------
-# Prepare final preprocess fit on full X_all (fit again to include all categories / scales)
-# But safer approach: fit preprocess on X_all to include all categories
-preprocess_full = ColumnTransformer(transformers=[
-    ("poly", PolynomialFeatures(degree=2, include_bias=False), numeric_poly),
-    ("num", StandardScaler(), numeric_other),
-    ("cat", OneHotEncoder(handle_unknown="ignore", sparse_output=False), categorical)
-], remainder="drop")
-preprocess_full.fit(X_all.fillna(train_median))
+# Example GridSearch for Ridge with polynomial degree 2
+# WARNING: Polynomial degree=2 blows up features. Use with caution (monitor feature count).
 
-# Ensure we prepare test dataframe with same engineered columns
-test = pd.read_csv(TEST_FILE)
-datetime_backup = test["datetime"].astype(str)  # preserve original string formatting for submission
-test = add_datetime_features(test)
+# grid = {
+#     'poly__degree': [1, 2],
+#     'model__alpha': [0.01, 0.1, 1, 10]
+# }
+# gs = GridSearchCV(pipe_ridge, grid, cv=5, scoring='neg_mean_squared_error', n_jobs=-1)
+# gs.fit(X_train, y_train)
+# print(gs.best_params_, math.sqrt(-gs.best_score_))
 
-# Clip categories and fill missing numerics
-test["season"] = test["season"].clip(1, 4).astype(int)
-test["weather"] = test["weather"].clip(1, 4).astype(int)
-test["holiday"] = test["holiday"].astype(int)
-test["workingday"] = test["workingday"].astype(int)
+# RandomForest grid example
+# rf_grid = {
+#     'model__n_estimators': [100, 200],
+#     'model__max_depth': [None, 10, 20]
+# }
+# gs_rf = GridSearchCV(pipe_rf, rf_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
+# gs_rf.fit(X_train, y_train)
+# print(gs_rf.best_params_)
 
-# fill numeric missing with train medians
-test[numeric_poly + numeric_other] = test[numeric_poly + numeric_other].fillna(train_median)
+# 9. Full example workflow (uncomment and run):
+# ---------------------------------------------------------------------
+df = pd.read_csv('bike_train.csv', parse_dates=['datetime'])
+df = feature_engineer(df, dateformat_train)
+target = 'count'
+# # drop casual/registered if present
+if set(['casual','registered']).issubset(df.columns):
+    df = df.drop(columns=['casual','registered'])
 
-X_test_final = test[FEATURES].copy()
+X = df.drop(columns=[target])
+y = df[target]
 
-# produce submissions per model (retrain each on full data)
-for name, base_model in models.items():
-    pipe_full = Pipeline([
-        ("pre", preprocess_full),
-        ("model", base_model)
-    ])
-    # retrain on entire training set (X_all)
-    pipe_full.fit(X_all.fillna(train_median), y_all)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    preds = pipe_full.predict(X_test_final)
-    preds = np.maximum(0, preds)       # no negatives
-    preds_rounded = np.round(preds).astype(int)
+# # Baseline runs
+res_lin = fit_and_eval(pipe_lin, X_train, X_test, y_train, y_test, name='Linear')
+res_ridge = fit_and_eval(pipe_ridge, X_train, X_test, y_train, y_test, name='Ridge')
+res_lasso = fit_and_eval(pipe_lasso, X_train, X_test, y_train, y_test, name='Lasso')
+res_rf = fit_and_eval(pipe_rf, X_train, X_test, y_train, y_test, name='RandomForest')
 
-    sub_df = pd.DataFrame({
-        "datetime": datetime_backup,
-        "count_predicted": preds_rounded
-    })
+# # If you want polynomial degree=2 for linear models (be careful):
+#pipe_ridge.set_params(poly__degree=2)
+#res_ridge_poly2 = fit_and_eval(pipe_ridge, X_train, X_test, y_train, y_test, name='Ridge_poly2')
 
-    out_filename = f"submission_{name}.csv"
-    sub_df.to_csv(out_filename, index=False)
-    print(f"Wrote {out_filename}")
+# 10. Feature importance for RandomForest (after fitting pipe_rf)
+# if you run pipe_rf.fit(X_train, y_train):
+#   # get feature names after column transformer
+pre = pipe_rf.named_steps['pre']
+#   # numeric feature names (passed through)
+num_features = numeric_features
+#   # categorical feature names from OneHotEncoder
+ohe = pre.named_transformers_['cat']
+cat_cols = list(ohe.get_feature_names_out(categorical_features))
+feature_names = num_features + cat_cols
+importances = pipe_rf.named_steps['model'].feature_importances_
+fi = pd.Series(importances, index=feature_names).sort_values(ascending=False)
+print(fi.head(30))
 
-print("\nAll done. Check the CSVs and upload the one you prefer to Kaggle.")
-
-
-
-
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
-
-def plot_feature_importance(name, numeric_poly, numeric_other, categorical, X_train, X_test, y_train):
-    # 1. Choose a model
-    #model_name = "Random Forest"   # or "XGBoost"
-    model_name = name
-    #model = models_all[model_name] # get the model object
-    
-    # 2. Fit the model on preprocessed data
-    # Transform features only, to get feature matrix
-    X_train_transformed = preprocess.fit_transform(X_train)
-    
-    # Fit the model on transformed data
-    model_clone = model
-    model_clone.fit(X_train_transformed, y_train)
-    
-    # 3. Get feature names
-    # Polynomial feature names
-    poly_features = preprocess.named_transformers_['poly'].get_feature_names_out(numeric_poly)
-    
-    # Scaled numeric features
-    numeric_features = numeric_other
-    
-    # OneHot categorical features
-    cat_features = preprocess.named_transformers_['cat'].get_feature_names_out(categorical)
-    
-    # Combine all
-    all_features = np.concatenate([poly_features, numeric_features, cat_features])
-    
-    # 4. Get feature importances
-    if hasattr(model_clone, 'feature_importances_'):
-        importances = model_clone.feature_importances_
-    else:
-        raise ValueError(f"{model_name} does not have feature_importances_ attribute")
-    
-    # 5. Plot
-    fi_df = pd.DataFrame({"feature": all_features, "importance": importances})
-    fi_df = fi_df.sort_values("importance", ascending=False).head(30)  # top 20 features
-    
-    plt.figure(figsize=(10,6))
-    sns.barplot(x="importance", y="feature",  hue="feature", data=fi_df, palette="viridis", legend=False)
-    plt.title(f"Top 20 Feature Importances — {model_name}")
-    plt.tight_layout()
-    plt.show()
-
-# Call it - "Random Forest"   # or "XGBoost"
-#plot_feature_importance("XGBoost" , models_all, numeric_poly, numeric_other, categorical, X_train, X_test, y_train)
-#plot_feature_importance("Random Forest" , numeric_poly, numeric_other, categorical, X_train, X_test, y_train)
+# ---------------------------------------------------------------------
+# End of script
+# Notes & tips:
+# - Trees (RandomForest) usually perform much better than plain linear models on this dataset.
+# - Use RMSLE as the main metric since count is a non-negative skewed target.
+# - Use polynomial features sparingly. degree=2 may help linear models but can explode dims when you OHE categories.
+# - If you want to include 'weekday', prefer engineered binary flags (is_weekend, is_rush_hour) rather than raw weekday.
+# - Consider using Gradient Boosting (XGBoost / LightGBM / CatBoost) after this pipeline for best performance.
 
 
+
+# Load test data
+bike_test = pd.read_csv("bike_test.csv")
+
+
+# Apply same feature engineering function
+bike_test_fe = feature_engineer(bike_test, dateformat_test)
+
+
+# Ensure train and test have same columns
+missing_cols = set(X_train.columns) - set(bike_test_fe.columns)
+
+print(f' Missing columns : {missing_cols}')
+
+for col in missing_cols:
+    bike_test_fe[col] = 0
+
+bike_test_fe = bike_test_fe[X_train.columns]
+
+
+# Predict using best model (example: Random Forest)
+test_pred = pipe_rf.predict(bike_test_fe)
+
+
+# Prepare submission
+submission = pd.DataFrame({
+"datetime": bike_test["datetime"],
+"count_predicted": test_pred.round().astype(int)
+})
+
+print(submission.head())
+print(submission.tail())
+
+submission.to_csv("submission_RF_28Nov.csv", index=False)
+print("Submission file saved: bike_submission.csv")
