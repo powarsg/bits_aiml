@@ -153,10 +153,13 @@ pipe_rf = Pipeline(steps=[
 
 
 # 7. Utility function to run training + evaluation
-def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name):
+def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name, debug = False):
     t0 = time()
     pipe.fit(X_train, y_train)
     t1 = time()
+
+    if debug == True :
+        debug_data(pipe, X_train, X_test)
 
     pred_log = pipe.predict(X_test)
     pred = np.expm1(pred_log)
@@ -172,6 +175,48 @@ def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name):
     print(f"{name}: RMSLE={result['RMSLE']:.4f}, R2={result['R2']:.4f}, Time={result['fit_time_s']:.2f}s")
     return result
 
+def debug_data(pipe, X_train, X_test):
+    # ----------------------------
+    # 1. Preprocess only
+    # ----------------------------
+    print("Before preprocessing:")
+    print("  X_train :", X_train.shape)
+    print("  X_test :", X_test.shape)
+
+    X_train_final = pipe.named_steps["pre"].fit_transform(X_train)
+    X_test_final = pipe.named_steps["pre"].transform(X_test)
+
+    print("After preprocessing:")
+    print("  X_train_pre :", X_train_final.shape)
+    print("  X_test_pre :", X_test_final.shape)
+
+    # ----------------------------
+    # 2. Apply Polynomial Features
+    # ----------------------------
+    if "poly" in pipe.named_steps:
+        X_train_final = pipe.named_steps["poly"].fit_transform(X_train_final)
+        X_test_final  = pipe.named_steps["poly"].transform(X_test_final)
+
+        print("After polynomial:")
+        print("  X_train_poly:", X_train_final.shape)
+        print("  X_test_poly:", X_test_final.shape)
+
+    # ----------------------------
+    # 3. Convert to DataFrame
+    # ----------------------------
+    feature_names = pipe.named_steps["pre"].get_feature_names_out()
+
+    if "poly" in pipe.named_steps:
+        feature_names = pipe.named_steps["poly"].get_feature_names_out(feature_names)
+
+    df_train_final = pd.DataFrame(X_test_final, columns=feature_names)
+    print(df_train_final.shape)
+    print(df_train_final.head())
+    print(df_train_final.tail())
+
+
+
+debug = True
 # # Baseline runs
 res_lin   = fit_and_eval(pipe_lin, X_train, X_test, y_train, y_test, "Linear")
 res_ridge = fit_and_eval(pipe_ridge, X_train, X_test, y_train, y_test, "Ridge")
@@ -243,9 +288,22 @@ submission = pd.DataFrame({
 "datetime": bike_test["datetime"],
 "count_predicted": test_pred.round().astype(int)
 })
-
+submission.to_csv("submission_RF_Log.csv", index=False)
 print(submission.head())
 print(submission.tail())
+print("Submission file saved: submission_RF_Log.csv")
 
+
+# Predict using model (example: Random Forest)
+pred_log = pipe_lin.predict(bike_test_fe)
+test_pred = np.expm1(pred_log)
+
+# Prepare submission
+submission = pd.DataFrame({
+"datetime": bike_test["datetime"],
+"count_predicted": test_pred.round().astype(int)
+})
 submission.to_csv("submission.csv", index=False)
+print(submission.head())
+print(submission.tail())
 print("Submission file saved: submission.csv")
