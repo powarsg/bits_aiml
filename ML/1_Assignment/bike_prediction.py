@@ -45,10 +45,20 @@ def feature_engineer(df, dateformat, drop_dt=True):
     df['month'] = df['datetime'].dt.month
     df['year'] = df['datetime'].dt.year.astype(str)
 
-    df['is_weekend'] = df['weekday'].isin([5, 6]).astype(int)
+    # Cyclic Encoding
+    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
+    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+
+    df["weekday_sin"] = np.sin(2 * np.pi * df["weekday"] / 7)
+    df["weekday_cos"] = np.cos(2 * np.pi * df["weekday"] / 7)
+
+    df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
+    df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
+    
+    #df['is_weekend'] = df['weekday'].isin([5, 6]).astype(int)
     df['is_rush_hour'] = df['hour'].isin([7, 8, 9, 16, 17, 18, 19]).astype(int)
 
-    df['temp_humidity_interaction'] = df['temp'] * (1 - df['humidity'])
+    df['temp_humidity'] = df['temp'] * (1 - df['humidity'])
 
     if 'atemp' in df.columns:
         df = df.drop(columns=['atemp'])
@@ -91,12 +101,17 @@ X_train, X_test, y_train, y_test = train_test_split(
 #     - categorical: OneHotEncoder(drop='first')
 
 numeric_features = [
-    'temp', 'humidity', 'windspeed',
-    'hour', 'month', 'is_weekend',
-    'is_rush_hour', 'temp_humidity_interaction'
+    "temp", "humidity", "windspeed",
+    "hour_sin", "hour_cos",
+    "weekday_sin", "weekday_cos",
+    "month_sin", "month_cos",
+    "temp_humidity"
 ]
 
-categorical_features = ['year', 'workingday', 'holiday', 'weather']
+categorical_features = [
+     "weather", "holiday", "workingday",
+    "year", "is_rush_hour"
+]
 
 
 # transformers
@@ -152,6 +167,23 @@ pipe_rf = Pipeline(steps=[
 ])
 
 
+import matplotlib.pyplot as plt
+import numpy as np
+# ---------------------------------------------------------
+# Plot Residual for model
+# ---------------------------------------------------------
+def plot_model_residual(name, y_test, y_pred):
+    residuals = y_test - y_pred
+    # 3. Plot residuals
+    plt.figure(figsize=(8,5))
+    plt.scatter(y_pred, residuals, alpha=0.5)
+    plt.axhline(0, color='red', linestyle='--')
+    plt.xlabel("Predicted Values")
+    plt.ylabel("Residuals (Actual - Predicted)")
+    plt.title("Residual Plot - "+name)
+    plt.show()
+
+
 # 7. Utility function to run training + evaluation
 def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name, debug = False):
     t0 = time()
@@ -164,6 +196,10 @@ def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name, debug = False):
     pred_log = pipe.predict(X_test)
     pred = np.expm1(pred_log)
     y_test_actual = np.expm1(y_test)
+
+    if debug == True :
+        #y_pred = pred.round().astype(int)
+        plot_model_residual(name, y_test_actual, pred)
 
     result = {
         "model": name,
@@ -218,7 +254,7 @@ def debug_data(pipe, X_train, X_test):
 
 debug = True
 # # Baseline runs
-res_lin   = fit_and_eval(pipe_lin, X_train, X_test, y_train, y_test, "Linear")
+res_lin   = fit_and_eval(pipe_lin, X_train, X_test, y_train, y_test, "Linear", debug)
 res_ridge = fit_and_eval(pipe_ridge, X_train, X_test, y_train, y_test, "Ridge")
 res_lasso = fit_and_eval(pipe_lasso, X_train, X_test, y_train, y_test, "Lasso")
 res_rf    = fit_and_eval(pipe_rf, X_train, X_test, y_train, y_test, "RandomForest")
@@ -235,7 +271,7 @@ feature_names = numeric_features + cat_names
 
 importances = pipe_rf.named_steps["model"].feature_importances_
 fi = pd.Series(importances, index=feature_names).sort_values(ascending=False)
-print(fi.head(20))
+#print(fi.head(20))
 
 
 # 8. Hyperparameter tuning suggestions (small grid examples)
@@ -280,21 +316,21 @@ for col in missing_cols:
 bike_test_fe = bike_test_fe[X_train.columns]
 
 # Predict using best model (example: Random Forest)
-pred_log = pipe_rf.predict(bike_test_fe)
-test_pred = np.expm1(pred_log)
+#pred_log = pipe_rf.predict(bike_test_fe)
+#test_pred = np.expm1(pred_log)
 
 # Prepare submission
-submission = pd.DataFrame({
-"datetime": bike_test["datetime"],
-"count_predicted": test_pred.round().astype(int)
-})
-submission.to_csv("submission_RF_Log.csv", index=False)
-print(submission.head())
-print(submission.tail())
-print("Submission file saved: submission_RF_Log.csv")
+#submission = pd.DataFrame({
+#"datetime": bike_test["datetime"],
+#"count_predicted": test_pred.round().astype(int)
+#})
+#submission.to_csv("submission_RF_Log.csv", index=False)
+#print(submission.head())
+#print(submission.tail())
+#print("Submission file saved: submission_RF_Log.csv")
 
 
-# Predict using model (example: Random Forest)
+# Predict using model (linear)
 pred_log = pipe_lin.predict(bike_test_fe)
 test_pred = np.expm1(pred_log)
 
@@ -303,7 +339,8 @@ submission = pd.DataFrame({
 "datetime": bike_test["datetime"],
 "count_predicted": test_pred.round().astype(int)
 })
-submission.to_csv("submission.csv", index=False)
+submission.to_csv("submission_Lin_log.csv", index=False)
 print(submission.head())
 print(submission.tail())
-print("Submission file saved: submission.csv")
+print("Submission file saved: submission_Lin_log.csv")
+
