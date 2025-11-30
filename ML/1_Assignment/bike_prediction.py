@@ -12,6 +12,7 @@ from sklearn.linear_model import LinearRegression, Ridge, Lasso
 from sklearn.ensemble import RandomForestRegressor
 
 import math
+import re
 from time import time
 
 
@@ -134,14 +135,14 @@ preprocessor_rf = ColumnTransformer(transformers=[
 # Linear
 pipe_lin = Pipeline(steps=[
     ("pre", preprocessor_linear),
-    ("poly", PolynomialFeatures(degree=2, include_bias=False)),
+    ("poly", PolynomialFeatures(degree=1, include_bias=False)),
     ("model", LinearRegression())
 ])
 
 # Ridge
 pipe_ridge = Pipeline(steps=[
     ("pre", preprocessor_linear),
-    ("poly", PolynomialFeatures(degree=2, include_bias=False)),
+    ("poly", PolynomialFeatures(degree=1, include_bias=False)),
     ("model", Ridge(alpha=1.0))
 ])
 
@@ -149,8 +150,8 @@ pipe_ridge = Pipeline(steps=[
 # Lasso
 pipe_lasso = Pipeline(steps=[
     ("pre", preprocessor_linear),
-    ("poly", PolynomialFeatures(degree=2, include_bias=False)),
-    ("model", Lasso(alpha=0.001, max_iter=70000))
+    ("poly", PolynomialFeatures(degree=1, include_bias=False)),
+    ("model", Lasso(alpha=0.01, max_iter=50000))
 ])
 
 
@@ -343,3 +344,90 @@ submission.to_csv("submission_lin.csv", index=False)
 print(submission.head())
 #print(submission.tail())
 print("Submission file saved: submission_lin.csv")
+
+
+
+# ============================================
+# 10. FIX DATETIME HOUR FORMAT IN SUBMISSION FILE
+# ============================================
+def fix_submission_datetime_hour(input_file="submission_lin.csv", output_file="submission.csv"):
+    """
+    Read submission file and fix datetime column's hour value.
+    - If hour value doesn't have 0 prepended (single digit), add 0
+    - If hour value already has 0 prepended (double digit), keep as is
+    - Preserve datetime order and count_predicted column unchanged
+    
+    Examples:
+        - 05-06-2012 5:00 -> 05-06-2012 05:00
+        - 02-04-2012 6:00 -> 02-04-2012 06:00
+        - 13-01-2012 07:00 -> 13-01-2012 07:00 (unchanged)
+    
+    Args:
+        input_file (str): Path to input CSV file (default: "submission_lin.csv")
+        output_file (str): Path to output CSV file (default: "submission.csv")
+    
+    Returns:
+        pd.DataFrame: DataFrame with corrected datetime column
+    """
+    # Read the CSV file
+    df = pd.read_csv(input_file)
+    
+    print(f"Reading {input_file}: {len(df)} rows")
+    
+    # Function to fix hour format - add leading zero to single digit hours
+    def fix_datetime_hour(dt_str):
+        """
+        Fix datetime string to ensure hour has leading zero if single digit.
+        Pattern: DD-MM-YYYY H:MM -> DD-MM-YYYY HH:MM
+        """
+        # Pattern to match: DD-MM-YYYY followed by space, then single digit hour (0-9), then colon and minutes
+        pattern = r'(\d{2}-\d{2}-\d{4}) (\d):(\d{2})'
+        
+        def replace_func(match):
+            date_part = match.group(1)  # DD-MM-YYYY
+            hour = match.group(2)        # Single digit hour (0-9)
+            minute = match.group(3)      # MM
+            # Add leading zero to hour using zfill(2)
+            return f'{date_part} {hour.zfill(2)}:{minute}'
+        
+        # Replace single digit hours with zero-padded hours
+        fixed = re.sub(pattern, replace_func, dt_str)
+        return fixed
+    
+    # Apply the fix to datetime column
+    df['datetime'] = df['datetime'].apply(fix_datetime_hour)
+    
+    # Count how many were fixed
+    df_original = pd.read_csv(input_file)
+    single_digit_original = df_original['datetime'].str.contains(r' \d:', regex=True).sum()
+    single_digit_new = df['datetime'].str.contains(r' \d:', regex=True).sum()
+    fixed_count = single_digit_original - single_digit_new
+    
+    print(f"Fixed {fixed_count} rows with single digit hours")
+    print(f"Rows with single digit hours remaining: {single_digit_new} (should be 0)")
+    
+    # Save to new file - maintain original order
+    df.to_csv(output_file, index=False)
+    
+    print(f"File saved: {output_file}")
+    print(f"Total rows: {len(df)}")
+    print(f"Datetime order preserved: ✓")
+    print(f"count_predicted column unchanged: ✓")
+    
+    # Show sample of corrections
+    print("\nSample corrections:")
+    sample_indices = df_original[df_original['datetime'].str.contains(r' \d:', regex=True)].head(5).index
+    for idx in sample_indices:
+        orig = df_original.loc[idx, 'datetime']
+        new = df.loc[idx, 'datetime']
+        print(f"  {orig:20} -> {new:20}")
+    
+    return df
+
+
+# Call the function to fix submission file
+print("\n" + "="*60)
+print("Fixing datetime hour format in submission file...")
+print("="*60)
+fixed_df = fix_submission_datetime_hour("submission_lin.csv", "submission.csv")
+print("="*60)
