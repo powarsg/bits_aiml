@@ -20,6 +20,7 @@ def rmsle(y_true, y_pred):
     return math.sqrt(mean_squared_log_error(y_true, y_pred))
 
 
+
 # 1. Load your dataset (replace path with your csv)
 # df = pd.read_csv('train.csv', parse_dates=['datetime'])
 # For notebook: uncomment above and set correct path
@@ -45,20 +46,10 @@ def feature_engineer(df, dateformat, drop_dt=True):
     df['month'] = df['datetime'].dt.month
     df['year'] = df['datetime'].dt.year.astype(str)
 
-    # Cyclic Encoding
-    df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
-    df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
+    df['is_weekend'] = df['weekday'].isin([5, 6]).astype(int)
+    df['is_rush_hour'] = df['hour'].isin([7, 8, 9, 17, 18, 19]).astype(int)
 
-    df["weekday_sin"] = np.sin(2 * np.pi * df["weekday"] / 7)
-    df["weekday_cos"] = np.cos(2 * np.pi * df["weekday"] / 7)
-
-    df["month_sin"] = np.sin(2 * np.pi * df["month"] / 12)
-    df["month_cos"] = np.cos(2 * np.pi * df["month"] / 12)
-    
-    #df['is_weekend'] = df['weekday'].isin([5, 6]).astype(int)
-    df['is_rush_hour'] = df['hour'].isin([7, 8, 9, 16, 17, 18, 19]).astype(int)
-
-    df['temp_humidity'] = df['temp'] * (1 - df['humidity'])
+    df['temp_humidity_interaction'] = df['temp'] * (1 - df['humidity'])
 
     if 'atemp' in df.columns:
         df = df.drop(columns=['atemp'])
@@ -89,8 +80,6 @@ y = np.log1p(df[target])
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
-
-
 # 5. Pipelines
 # We'll build two pipelines:
 #  A) For linear models (LinearRegression, Ridge, Lasso):
@@ -101,16 +90,17 @@ X_train, X_test, y_train, y_test = train_test_split(
 #     - categorical: OneHotEncoder(drop='first')
 
 numeric_features = [
-    "temp", "humidity", "windspeed",
-    "hour_sin", "hour_cos",
-    "weekday_sin", "weekday_cos",
-    "month_sin", "month_cos",
-    "temp_humidity"
+    'temp', 'humidity', 'windspeed',
+    'hour', 'month', 'is_weekend',
+    'is_rush_hour', 'temp_humidity_interaction'
 ]
 
-categorical_features = [
-     "weather", "holiday", "workingday",
-    "year", "is_rush_hour"
+#poly_cols = []    # only temp
+
+#numeric_features = [col for col in numeric_all if col not in poly_cols]
+
+categorical_features = [ 'workingday', 'holiday', 'weather'
+#,'year'
 ]
 
 
@@ -118,10 +108,14 @@ categorical_features = [
 numeric_transformer_linear = Pipeline(steps=[
     ("scaler", StandardScaler())
 ])
-
-categorical_transformer = OneHotEncoder(drop='first', sparse_output=False)
+poly_transformer = Pipeline(steps=[
+    ("poly", PolynomialFeatures(degree=2, include_bias=False)),
+    ("scaler", StandardScaler())
+])
+categorical_transformer = OneHotEncoder(drop='first', sparse_output=False, handle_unknown='ignore')
 
 preprocessor_linear = ColumnTransformer(transformers=[
+    #("poly", poly_transformer, poly_cols),
     ('num', numeric_transformer_linear, numeric_features),
     ('cat', categorical_transformer, categorical_features)
 ])
@@ -167,23 +161,6 @@ pipe_rf = Pipeline(steps=[
 ])
 
 
-import matplotlib.pyplot as plt
-import numpy as np
-# ---------------------------------------------------------
-# Plot Residual for model
-# ---------------------------------------------------------
-def plot_model_residual(name, y_test, y_pred):
-    residuals = y_test - y_pred
-    # 3. Plot residuals
-    plt.figure(figsize=(8,5))
-    plt.scatter(y_pred, residuals, alpha=0.5)
-    plt.axhline(0, color='red', linestyle='--')
-    plt.xlabel("Predicted Values")
-    plt.ylabel("Residuals (Actual - Predicted)")
-    plt.title("Residual Plot - "+name)
-    plt.show()
-
-
 # 7. Utility function to run training + evaluation
 def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name, debug = False):
     t0 = time()
@@ -196,10 +173,6 @@ def fit_and_eval(pipe, X_train, X_test, y_train, y_test, name, debug = False):
     pred_log = pipe.predict(X_test)
     pred = np.expm1(pred_log)
     y_test_actual = np.expm1(y_test)
-
-    if debug == True :
-        #y_pred = pred.round().astype(int)
-        plot_model_residual(name, y_test_actual, pred)
 
     result = {
         "model": name,
@@ -215,16 +188,23 @@ def debug_data(pipe, X_train, X_test):
     # ----------------------------
     # 1. Preprocess only
     # ----------------------------
-    print("Before preprocessing:")
+    print("------------ Before preprocessing ---------------- ")
     print("  X_train :", X_train.shape)
     print("  X_test :", X_test.shape)
+
+    #print(df_train_final.shape)
+    print(X_test.head())
+
 
     X_train_final = pipe.named_steps["pre"].fit_transform(X_train)
     X_test_final = pipe.named_steps["pre"].transform(X_test)
 
-    print("After preprocessing:")
+
+    print("------------ After preprocessing ---------------- ")
     print("  X_train_pre :", X_train_final.shape)
     print("  X_test_pre :", X_test_final.shape)
+    #print(X_train_final[:5])
+
 
     # ----------------------------
     # 2. Apply Polynomial Features
@@ -233,7 +213,7 @@ def debug_data(pipe, X_train, X_test):
         X_train_final = pipe.named_steps["poly"].fit_transform(X_train_final)
         X_test_final  = pipe.named_steps["poly"].transform(X_test_final)
 
-        print("After polynomial:")
+        print("------------ After polynomial ---------------- ")
         print("  X_train_poly:", X_train_final.shape)
         print("  X_test_poly:", X_test_final.shape)
 
@@ -248,7 +228,7 @@ def debug_data(pipe, X_train, X_test):
     df_train_final = pd.DataFrame(X_test_final, columns=feature_names)
     print(df_train_final.shape)
     print(df_train_final.head())
-    print(df_train_final.tail())
+    #print(df_train_final.tail())
 
 
 
@@ -257,21 +237,7 @@ debug = True
 res_lin   = fit_and_eval(pipe_lin, X_train, X_test, y_train, y_test, "Linear", debug)
 res_ridge = fit_and_eval(pipe_ridge, X_train, X_test, y_train, y_test, "Ridge")
 res_lasso = fit_and_eval(pipe_lasso, X_train, X_test, y_train, y_test, "Lasso")
-res_rf    = fit_and_eval(pipe_rf, X_train, X_test, y_train, y_test, "RandomForest")
-
-
-# Feature Importance (Random Forest)
-pipe_rf.fit(X_train, y_train)
-
-pre = pipe_rf.named_steps["pre"]
-ohe = pre.named_transformers_["cat"]
-
-cat_names = list(ohe.get_feature_names_out(categorical_features))
-feature_names = numeric_features + cat_names
-
-importances = pipe_rf.named_steps["model"].feature_importances_
-fi = pd.Series(importances, index=feature_names).sort_values(ascending=False)
-#print(fi.head(20))
+#res_rf    = fit_and_eval(pipe_rf, X_train, X_test, y_train, y_test, "RandomForest")
 
 
 # 8. Hyperparameter tuning suggestions (small grid examples)
@@ -289,18 +255,47 @@ fi = pd.Series(importances, index=feature_names).sort_values(ascending=False)
 # gs.fit(X_train, y_train)
 # print(gs.best_params_, math.sqrt(-gs.best_score_))
 
-# RandomForest grid example
-# rf_grid = {
-#     'model__n_estimators': [100, 200],
-#     'model__max_depth': [None, 10, 20]
-# }
-# gs_rf = GridSearchCV(pipe_rf, rf_grid, cv=3, scoring='neg_mean_squared_error', n_jobs=-1)
-# gs_rf.fit(X_train, y_train)
-# print(gs_rf.best_params_)
+
+# ============================================
+# 9. RESIDUAL PLOT FOR LINEAR MODEL
+# ============================================
+def plot_residuals(pipe, X_test, y_test):
+    """
+    Plots residuals for the Linear model using test split data.
+    """
+    # Predict log -> convert back
+    pred_log = pipe.predict(X_test)
+    y_pred = np.expm1(pred_log)
+    y_true = np.expm1(y_test)
+
+    residuals = y_true - y_pred
+
+    plt.figure(figsize=(10,5))
+    plt.scatter(y_pred, residuals, alpha=0.4)
+    plt.axhline(0, color='red', linestyle='--', linewidth=2)
+    plt.xlabel("Predicted Values")
+    plt.ylabel("Residuals (y_true - y_pred)")
+    plt.title("Residual Plot - Linear Regression")
+    plt.show()
 
 
+# Call residual plot for Linear model
+plot_residuals(pipe_lin, X_test, y_test)
 
+# ============================================
+# 10. TRAIN FINAL LINEAR MODEL ON FULL DATASET
+# ============================================
+print("\nTraining final Linear model on FULL dataset...")
+pipe_lin_full = Pipeline(steps=[
+    ("pre", preprocessor_linear),
+    ("model", LinearRegression())
+])
+pipe_lin_full.fit(X, y)
+print("Final model trained on full dataset.")
+
+# ============================================
 # Load test data
+# ============================================
 bike_test = pd.read_csv("bike_test.csv")
 
 # Apply same feature engineering function
@@ -315,23 +310,12 @@ for col in missing_cols:
 
 bike_test_fe = bike_test_fe[X_train.columns]
 
-# Predict using best model (example: Random Forest)
-#pred_log = pipe_rf.predict(bike_test_fe)
-#test_pred = np.expm1(pred_log)
-
-# Prepare submission
-#submission = pd.DataFrame({
-#"datetime": bike_test["datetime"],
-#"count_predicted": test_pred.round().astype(int)
-#})
-#submission.to_csv("submission_RF_Log.csv", index=False)
-#print(submission.head())
-#print(submission.tail())
-#print("Submission file saved: submission_RF_Log.csv")
-
-
-# Predict using model (linear)
-pred_log = pipe_lin.predict(bike_test_fe)
+# ============================================
+# 11. FINAL PREDICTIONS USING FULL MODEL
+# ============================================
+# Predict using model
+#pred_log = pipe_lin.predict(bike_test_fe)
+pred_log = pipe_lin_full.predict(bike_test_fe)
 test_pred = np.expm1(pred_log)
 
 # Prepare submission
@@ -339,8 +323,46 @@ submission = pd.DataFrame({
 "datetime": bike_test["datetime"],
 "count_predicted": test_pred.round().astype(int)
 })
-submission.to_csv("submission_Lin_log.csv", index=False)
+submission.to_csv("submission.csv", index=False)
 print(submission.head())
-print(submission.tail())
-print("Submission file saved: submission_Lin_log.csv")
+#print(submission.tail())
+print("Submission file saved: submission.csv")
 
+
+
+# ============================================
+# 12. FEATURE IMPORTANCE PLOT (Linear Model)
+# ============================================
+
+def plot_linear_feature_importance(pipe, preprocessor):
+    # 1. Get feature names from preprocessor
+    feature_names = preprocessor.get_feature_names_out()
+
+    # 2. Extract coefficients from LinearRegression model
+    coef = pipe.named_steps["model"].coef_
+
+    # 3. Create DataFrame
+    coef_df = pd.DataFrame({
+        "feature": feature_names,
+        "coefficient": coef,
+        "importance": np.abs(coef)
+    })
+
+    # 4. Sort by absolute importance
+    coef_df = coef_df.sort_values("importance", ascending=False).head(25)
+
+    # 5. Plot
+    plt.figure(figsize=(10, 12))
+    sns.barplot(x="importance", y="feature", data=coef_df)
+    plt.title("Top 25 Feature Importances (Linear Regression)")
+    plt.xlabel("Absolute Coefficient Value")
+    plt.ylabel("Feature")
+    plt.tight_layout()
+    plt.show()
+
+    return coef_df
+
+
+# Call importance plot
+feature_importance_df = plot_linear_feature_importance(pipe_lin_full, preprocessor_linear)
+print(feature_importance_df.head(20))
