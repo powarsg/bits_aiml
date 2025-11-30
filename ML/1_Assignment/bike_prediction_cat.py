@@ -258,24 +258,6 @@ try:
 except Exception as e:
     log.warning("Could not create feature importance plot: %s", str(e))
 
-# -----------------------
-# Final residual plot using OOF predictions of the chosen approach
-# -----------------------
-if winner == "raw":
-    final_oof = oof_raw
-else:
-    final_oof = oof_log
-
-plt.figure(figsize=(8,5))
-plt.scatter(y, final_oof - y, alpha=0.3, s=10)
-plt.axhline(0, color='red', linewidth=1)
-plt.xlabel("True Count")
-plt.ylabel("Residual (pred - true)")
-plt.title(f"OOF Residuals (chosen: {winner})")
-plt.tight_layout()
-plt.savefig("oof_residuals_chosen.png")
-plt.close()
-log.info("Saved oof_residuals_chosen.png")
 
 # -----------------------
 # Submission
