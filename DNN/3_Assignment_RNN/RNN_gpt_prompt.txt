@@ -1,0 +1,70 @@
+
+@/Users/sagar.powar/sagar/my_data/bits/Sem_assign/DNN/3_Assignment_RNN/RNN_assignment_algo.txt
+@/Users/sagar.powar/sagar/my_data/bits/Sem_assign/DNN/3_Assignment_RNN/RNN_Assignment_Instructions.pdf
+@/Users/sagar.powar/sagar/my_data/bits/Sem_assign/DNN/3_Assignment_RNN/RNN_assignment_template.ipynb
+
+Read and analyse carefully the attached RNN assignment instructions pdf file.
+Read and analyse assignment marking scheme algorithm (txt) file.
+Read and understand the attached ipynb template file. (Rename to RNN_assignment_template.ipynb)
+
+Instructions :
+1. Dataset url = "https://raw.githubusercontent.com/plotly/datasets/master/2016-weather-data-seattle.csv"
+2. Minimum: 1200 time steps (take subset)
+3. use keras library
+4. Implement models such that loss reduction % should be more than 50%.
+
+Create fully implemented assignment ipynb file using template ipynb file.
+Dont remove TODO sections. Dont delete any cell.
+Implement all the sections, empty functions, all visulizations and outputs required.
+
+Final notebook file should be running without errors.
+
+Student Details :
+Bits ID - 2025AA05421
+Name - Sagar Ganpati Powar
+email id - 2025aa05421@wilp.bits-pilani.ac.in
+
+
+
+-----------------------------------
+
+I want to do RNN assignment 3. My details to fill in ipynb file.
+Bits ID - 2025AA05421
+Name - Sagar Ganpati Powar
+email id - 2025aa05421@wilp.bits-pilani.ac.in
+
+
+I have attached 3 files here.
+1. Instructions pdf file - Go through each details on how to do this assignments
+2. template ipynb file - which needs to be used and complete for assignment
+3. Algorithm txt file - how marking scheme will work to assess the assignment
+
+Please go through the instruction pdf and marking algorithm txt files.
+
+Create final assignment ipynb file. It should be error free. Load the required wheather dataset which has less than 10000 records or which is easy run.
+
+
+
+The LSTM and Transformer models achieved comparable predictive performance on the Seattle weather dataset.
+The LSTM model slightly outperformed the Transformer with marginally lower RMSE (≈2.02) and MAE (≈1.63), while both models achieved similar R2 scores (~0.85), indicating strong explanatory power.
+The performance difference between the two models was minimal, suggesting that both architectures are effective for short-term temperature forecasting.
+
+From an architectural perspective, RNNs such as LSTMs process sequences sequentially and maintain temporal memory through gated mechanisms, making them well-suited for moderate-length time series.
+In contrast, Transformers rely on parallel processing using self-attention, allowing them to model global dependencies across all time steps simultaneously.
+
+The attention mechanism enables Transformers to focus on relevant parts of the input sequence, improving their ability to capture long-range relationships.
+Unlike RNN, which may suffer from vanishing gradients when handling long-term dependencies, Transformers avoid this issue by directly attending to all positions in the sequence.
+
+In terms of computational cost, the Transformer required more parameters and longer training time than the LSTM. However, both models exhibited stable convergence, with smooth loss reduction during training.
+
+
+
+key_topics = [
+      'performance', 'mae', 'rmse', 'mape', 'r2',  // Performance comparison
+      'rnn', 'lstm', 'gru', 'recurrent',  // RNN architecture
+      'transformer', 'attention', 'self-attention',  // Transformer architecture
+      'long-term', 'dependency', 'dependencies', 'sequence',  // Long-term dependencies
+      'computational', 'parameters', 'training time', 'cost', 'efficiency',  // Computational cost
+      'convergence', 'loss',  // Convergence behavior
+      'advantage', 'disadvantage', 'insight', 'comparison'  // Comparative insights
+   ]
