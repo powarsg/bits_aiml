@@ -1,0 +1,15 @@
+
+1) Place training file in this folder.
+   
+2) Install requirements
+   pip install -r rqmnts.txt
+
+3) Train the model (creates model.joblib)
+   python <trainingfile>.py
+
+4a) Run Streamlit app (demo UI)
+   streamlit run <streamlitfile>.py
+
+NOTES:
+- training may take several minutes depending on CPU.
+- If you prefer a pre-trained model, run step 3 in advance and keep model.joblib in this folder.
